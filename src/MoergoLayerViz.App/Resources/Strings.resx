@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <!-- Application title / chrome -->
+  <data name="Title_App"><value>Moergo Layer Viz</value></data>
+  <data name="Tray_Tooltip"><value>Moergo Layer Viz</value></data>
+  <data name="Tray_ShowLayers"><value>Show Layers</value></data>
+  <data name="Tray_Quit"><value>Quit</value></data>
+
+  <!-- Toolbar tooltips -->
+  <data name="Tooltip_Quit"><value>Quit</value></data>
+  <data name="Tooltip_Minimize"><value>Minimize</value></data>
+  <data name="Tooltip_LiveHighlighting"><value>Live key highlighting</value></data>
+  <data name="Tooltip_AutoLayerSwitch"><value>Auto layer switch</value></data>
+  <data name="Tooltip_ResetLayerTracking"><value>Reset layer tracking</value></data>
+  <data name="Tooltip_AlwaysOnTop"><value>Always on top</value></data>
+  <data name="Tooltip_OpenLogFolder"><value>Open log folder</value></data>
+  <data name="Tooltip_CopyDiagnostics"><value>Copy diagnostics to clipboard</value></data>
+  <data name="Tooltip_Help"><value>Help</value></data>
+  <data name="Tooltip_Settings"><value>Settings</value></data>
+  <data name="Tooltip_Refresh"><value>Reload layout JSON</value></data>
+  <data name="Tooltip_LoadLayout"><value>Load Moergo layout JSON…</value></data>
+  <data name="Tooltip_Keyboard"><value>Keyboard</value></data>
+
+  <!-- Status messages -->
+  <data name="Status_Ready"><value>Ready</value></data>
+  <data name="Status_NoLayoutLoaded"><value>No layout loaded — click the folder icon to open a Moergo JSON export</value></data>
+  <data name="Status_Loaded"><value>Loaded {0} ({1} layers)</value></data>
+  <data name="Status_LoadErrorFormat"><value>Load failed: {0}</value></data>
+  <data name="Status_UntrackableLayersFormat"><value>{0} layer switches can't be tracked — convert them to signal macros to enable auto layer switching</value></data>
+  <data name="Status_DiagnosticsCopied"><value>Diagnostics copied to clipboard</value></data>
+
+  <!-- File picker -->
+  <data name="LoadDialog_Title"><value>Open Moergo layout JSON</value></data>
+  <data name="LoadDialog_FileType"><value>Moergo layout JSON</value></data>
+</root>

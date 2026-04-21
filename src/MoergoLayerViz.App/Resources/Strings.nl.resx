@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype"><value>text/microsoft-resx</value></resheader>
+  <resheader name="version"><value>2.0</value></resheader>
+  <resheader name="reader"><value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+  <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
+
+  <data name="Title_App"><value>Moergo Layer Viz</value></data>
+  <data name="Tray_Tooltip"><value>Moergo Layer Viz</value></data>
+  <data name="Tray_ShowLayers"><value>Lagen tonen</value></data>
+  <data name="Tray_Quit"><value>Afsluiten</value></data>
+
+  <data name="Tooltip_Quit"><value>Afsluiten</value></data>
+  <data name="Tooltip_Minimize"><value>Minimaliseren</value></data>
+  <data name="Tooltip_LiveHighlighting"><value>Live toetsen tonen</value></data>
+  <data name="Tooltip_AutoLayerSwitch"><value>Automatische laagwissel</value></data>
+  <data name="Tooltip_ResetLayerTracking"><value>Laagwissel resetten</value></data>
+  <data name="Tooltip_AlwaysOnTop"><value>Altijd op voorgrond</value></data>
+  <data name="Tooltip_OpenLogFolder"><value>Logmap openen</value></data>
+  <data name="Tooltip_CopyDiagnostics"><value>Diagnose naar klembord kopiëren</value></data>
+  <data name="Tooltip_Help"><value>Help</value></data>
+  <data name="Tooltip_Settings"><value>Instellingen</value></data>
+  <data name="Tooltip_Refresh"><value>Layout JSON opnieuw inladen</value></data>
+  <data name="Tooltip_LoadLayout"><value>Moergo layout JSON openen…</value></data>
+  <data name="Tooltip_Keyboard"><value>Toetsenbord</value></data>
+
+  <data name="Status_Ready"><value>Klaar</value></data>
+  <data name="Status_NoLayoutLoaded"><value>Geen layout geladen — klik op het mappictogram om een Moergo JSON te openen</value></data>
+  <data name="Status_Loaded"><value>Geladen: {0} ({1} lagen)</value></data>
+  <data name="Status_LoadErrorFormat"><value>Laden mislukt: {0}</value></data>
+  <data name="Status_UntrackableLayersFormat"><value>{0} laagwissels kunnen niet gevolgd worden — zet ze om naar signaalmacro's voor automatische laagwissel</value></data>
+  <data name="Status_DiagnosticsCopied"><value>Diagnose naar klembord gekopieerd</value></data>
+
+  <data name="LoadDialog_Title"><value>Moergo layout JSON openen</value></data>
+  <data name="LoadDialog_FileType"><value>Moergo layout JSON</value></data>
+</root>

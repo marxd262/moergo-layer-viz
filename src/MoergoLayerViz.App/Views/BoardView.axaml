@@ -1,0 +1,90 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:MoergoLayerViz.App.ViewModels"
+             x:Class="MoergoLayerViz.App.Views.BoardView"
+             x:DataType="vm:MainWindowViewModel">
+
+    <UserControl.Resources>
+        <!-- Palette tuned to the earlier xaml.io sketch. -->
+        <SolidColorBrush x:Key="KeyFill" Color="#F2F2F2" />
+        <SolidColorBrush x:Key="KeyStroke" Color="#B0B0B0" />
+        <SolidColorBrush x:Key="LayerKeyFill" Color="#1F8B4C" />
+        <SolidColorBrush x:Key="UntrackableKeyFill" Color="#E64980" />
+        <SolidColorBrush x:Key="KeyLabel" Color="#1E1E2E" />
+        <SolidColorBrush x:Key="LayerKeyLabel" Color="#F2F2F2" />
+    </UserControl.Resources>
+
+    <!-- Viewbox auto-scales the fixed 1400×600 board to whatever room the
+         window provides. We keep aspect so rotated thumb keys read correctly.
+         NOTE: Canvas.Left/Top are applied via ItemsControl.Styles (per-item
+         Binding context) rather than ItemContainerTheme — the ControlTheme
+         variant doesn't rebind reliably per item in Avalonia 11, which
+         collapses every key to (0,0). -->
+    <Viewbox Stretch="Uniform" StretchDirection="Both">
+        <ItemsControl ItemsSource="{Binding Keys}"
+                      Width="{Binding CanvasWidth}"
+                      Height="{Binding CanvasHeight}">
+            <ItemsControl.ItemsPanel>
+                <ItemsPanelTemplate>
+                    <Canvas />
+                </ItemsPanelTemplate>
+            </ItemsControl.ItemsPanel>
+            <ItemsControl.Styles>
+                <Style Selector="ContentPresenter">
+                    <Setter Property="Canvas.Left" Value="{Binding Position.X}" />
+                    <Setter Property="Canvas.Top" Value="{Binding Position.Y}" />
+                </Style>
+            </ItemsControl.Styles>
+            <ItemsControl.ItemTemplate>
+                <DataTemplate x:DataType="vm:KeyViewModel">
+                    <Grid Width="{Binding Position.Width}"
+                          Height="{Binding Position.Height}">
+                        <Grid.RenderTransform>
+                            <RotateTransform Angle="{Binding Position.RotationDegrees}" />
+                        </Grid.RenderTransform>
+                        <Grid.RenderTransformOrigin>0.5,0.5</Grid.RenderTransformOrigin>
+
+                        <!-- Default fill; swapped out for layer-signal and untrackable cases. -->
+                        <Rectangle RadiusX="6" RadiusY="6"
+                                   Stroke="{StaticResource KeyStroke}"
+                                   StrokeThickness="1"
+                                   Fill="{StaticResource KeyFill}"
+                                   IsVisible="{Binding !IsLayerSignalKey}" />
+
+                        <Rectangle RadiusX="6" RadiusY="6"
+                                   Fill="{StaticResource LayerKeyFill}"
+                                   IsVisible="{Binding IsLayerSignalKey}" />
+
+                        <!-- Untrackable-layer warning: pink border over the base fill -->
+                        <Rectangle RadiusX="6" RadiusY="6"
+                                   Stroke="{StaticResource UntrackableKeyFill}"
+                                   StrokeThickness="2"
+                                   Fill="Transparent"
+                                   IsVisible="{Binding IsUntrackableLayerSwitch}" />
+
+                        <TextBlock Text="{Binding Label}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"
+                                   Foreground="{StaticResource KeyLabel}"
+                                   IsVisible="{Binding !IsLayerSignalKey}" />
+
+                        <TextBlock Text="{Binding Label}"
+                                   HorizontalAlignment="Center"
+                                   VerticalAlignment="Center"
+                                   FontSize="11"
+                                   FontWeight="SemiBold"
+                                   TextWrapping="Wrap"
+                                   TextAlignment="Center"
+                                   Foreground="{StaticResource LayerKeyLabel}"
+                                   IsVisible="{Binding IsLayerSignalKey}" />
+                    </Grid>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+    </Viewbox>
+
+</UserControl>

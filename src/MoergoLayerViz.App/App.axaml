@@ -1,0 +1,30 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:loc="using:MoergoLayerViz.App.Localization"
+             x:Class="MoergoLayerViz.App.App"
+             RequestedThemeVariant="Dark">
+
+    <Application.Styles>
+        <FluentTheme />
+    </Application.Styles>
+
+    <Application.Resources>
+        <loc:Loc x:Key="Loc" />
+    </Application.Resources>
+
+    <!-- System tray icon (NativeMenuItem doesn't support binding — localized in code-behind) -->
+    <TrayIcon.Icons>
+        <TrayIcons>
+            <TrayIcon ToolTipText="Moergo Layer Viz">
+                <TrayIcon.Menu>
+                    <NativeMenu>
+                        <NativeMenuItem Header="Show Layers" Command="{Binding ShowCommand}" />
+                        <NativeMenuItemSeparator />
+                        <NativeMenuItem Header="Quit" Command="{Binding QuitCommand}" />
+                    </NativeMenu>
+                </TrayIcon.Menu>
+            </TrayIcon>
+        </TrayIcons>
+    </TrayIcon.Icons>
+
+</Application>
