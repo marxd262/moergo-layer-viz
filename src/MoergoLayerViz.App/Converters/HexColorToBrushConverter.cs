@@ -20,6 +20,10 @@ public class HexColorToBrushConverter : IValueConverter
             {
                 if (!hex.StartsWith('#'))
                     hex = "#" + hex;
+                // Moergo emits CSS-style #RRGGBBAA; Avalonia expects #AARRGGBB.
+                // Reorder so the alpha moves to the front.
+                if (hex.Length == 9)
+                    hex = "#" + hex.Substring(7, 2) + hex.Substring(1, 6);
                 return new SolidColorBrush(Color.Parse(hex));
             }
             catch

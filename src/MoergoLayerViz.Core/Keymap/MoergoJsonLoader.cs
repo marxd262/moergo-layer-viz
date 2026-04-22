@@ -70,7 +70,12 @@ public static class MoergoJsonLoader
         var flatParams = new List<string>();
         if (src.Params is { Count: > 0 })
             FlattenParams(src.Params, flatParams);
-        return new KeyBinding(src.Value, flatParams);
+        return new KeyBinding(src.Value, flatParams)
+        {
+            DecorationLabel = string.IsNullOrWhiteSpace(src.Decoration?.Label) ? null : src.Decoration!.Label,
+            DecorationBackground = string.IsNullOrWhiteSpace(src.Decoration?.Background) ? null : src.Decoration!.Background,
+            DecorationIcon = string.IsNullOrWhiteSpace(src.Decoration?.Icon) ? null : src.Decoration!.Icon,
+        };
     }
 
     private static MoergoMacro ToMacro(MoergoMacroDefinition src)

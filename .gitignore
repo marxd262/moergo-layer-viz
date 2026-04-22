@@ -23,6 +23,7 @@ bld/
 [Oo]bj/
 [Ll]og/
 [Ll]ogs/
+[dDocs]/
 
 # .NET Core
 project.lock.json
@@ -56,3 +57,7 @@ publish/
 # Claude Code local settings (auto-mutated with per-session permissions)
 .claude/settings.local.json
 .claude/settings.json
+
+# Project planning notes (kept local, not published)
+docs/
+CLAUDE.md

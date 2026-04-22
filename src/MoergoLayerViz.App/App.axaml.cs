@@ -11,6 +11,8 @@ using MoergoLayerViz.App.ViewModels;
 using MoergoLayerViz.App.Views;
 using MoergoLayerViz.Core.Diagnostics;
 using MoergoLayerViz.Core.Settings;
+using Projektanker.Icons.Avalonia;
+using Projektanker.Icons.Avalonia.FontAwesome;
 
 namespace MoergoLayerViz.App;
 
@@ -20,6 +22,10 @@ public partial class App : Application
 
     public override void Initialize()
     {
+        // Register Font Awesome icon provider before XAML is loaded so any
+        // <i:Icon> controls inside templates resolve fa-* identifiers.
+        IconProvider.Current.Register<FontAwesomeIconProvider>();
+
         AvaloniaXamlLoader.Load(this);
     }
 

@@ -7,6 +7,34 @@ namespace MoergoLayerViz.Tests;
 public class MoergoJsonLoaderTests
 {
     [Fact]
+    public void LoadsDecorationLabel_FromBinding()
+    {
+        const string json = """
+        {
+          "keyboard": "go60",
+          "layer_names": ["Base"],
+          "layers": [[
+            {
+              "value": "&kp",
+              "params": [ { "value": "LS", "params": [ { "value": "LC", "params": [ { "value": "V" } ] } ] } ],
+              "decoration": { "label": "Paste", "icon": "fa-paste", "background": "#fffec9" }
+            },
+            { "value": "&trans" }
+          ]]
+        }
+        """;
+
+        var config = MoergoJsonLoader.LoadFromJson(json);
+        var bindings = config.Layers[0].Bindings;
+
+        Assert.Equal("Paste", bindings[0].DecorationLabel);
+        Assert.Equal("&kp", bindings[0].Behavior);
+        Assert.Equal(new[] { "LS", "LC", "V" }, bindings[0].Params);
+
+        Assert.Null(bindings[1].DecorationLabel);
+    }
+
+    [Fact]
     public void LoadsGo60FromJson_ProducesFiveLayersWithSixtyKeysEach()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Go60.json");

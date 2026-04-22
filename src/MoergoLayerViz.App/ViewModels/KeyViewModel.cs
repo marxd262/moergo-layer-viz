@@ -1,4 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
+using MoergoLayerViz.Core.Keymap;
 using MoergoLayerViz.Core.Layout;
 using MoergoLayerViz.Core.Models;
 
@@ -12,11 +13,80 @@ public partial class KeyViewModel : ObservableObject
 {
     public KeyPosition Position { get; }
 
-    [ObservableProperty] private string _label = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LabelFontSize))]
+    private string _label = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(SubscriptFontSize))]
+    private string _subscript = "";
+    [ObservableProperty] private string _topLeftLabel = "";
+    [ObservableProperty] private string _iconName = "";
     [ObservableProperty] private string _behavior = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(KeyForegroundColor))]
+    private string _keyFillColor = DefaultKeyFill;
+
+    private const string DefaultKeyFill = "#F2F2F2";
+    private const string DarkForeground = "#1E1E2E";
+    private const string LightForeground = "#F2F2F2";
+
+    /// <summary>
+    /// Auto-contrasting label/icon color for the current <see cref="KeyFillColor"/>.
+    /// Uses Rec. 709 luminance (0.2126R + 0.7152G + 0.0722B) with a threshold
+    /// around mid-grey so pastel fills still read dark while navy / black
+    /// decoration backgrounds get a light foreground.
+    /// </summary>
+    public string KeyForegroundColor => IsLightBackground(KeyFillColor) ? DarkForeground : LightForeground;
+
+    private static bool IsLightBackground(string hex)
+    {
+        if (string.IsNullOrWhiteSpace(hex)) return true;
+        if (hex.StartsWith('#')) hex = hex.Substring(1);
+        // Accept CSS-style #RRGGBBAA — drop trailing alpha, use just RGB.
+        if (hex.Length == 8) hex = hex.Substring(0, 6);
+        if (hex.Length == 3) hex = string.Concat(hex[0], hex[0], hex[1], hex[1], hex[2], hex[2]);
+        if (hex.Length != 6) return true;
+        if (!int.TryParse(hex.AsSpan(0, 2), System.Globalization.NumberStyles.HexNumber, null, out var r)
+            || !int.TryParse(hex.AsSpan(2, 2), System.Globalization.NumberStyles.HexNumber, null, out var g)
+            || !int.TryParse(hex.AsSpan(4, 2), System.Globalization.NumberStyles.HexNumber, null, out var b))
+            return true;
+        var luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        return luminance > 140; // ~55% of max — tuned so pastel layer palette stays "light".
+    }
     [ObservableProperty] private bool _isLayerSignalKey;
     [ObservableProperty] private bool _isPressed;
     [ObservableProperty] private bool _isUntrackableLayerSwitch;
+
+    /// <summary>
+    /// Auto-scales the label font to the label length so single glyphs read
+    /// big while multi-word labels still fit a 60px cap.
+    /// </summary>
+    public double LabelFontSize => Label switch
+    {
+        // Slim arrow glyphs need extra weight to read at a glance.
+        "↑" or "↓" or "←" or "→" => 28,
+        _ => Label.Length switch
+        {
+            0 => 14,
+            1 => 20,
+            2 => 18,
+            3 => 15,
+            _ => 12,
+        },
+    };
+
+    /// <summary>
+    /// Same length-based scaling for the subscript — single-char glyphs (the
+    /// modifier icons ⇧ ⌃ ⌥ ⌘) get a bump so they read as icons rather than
+    /// vestigial tags.
+    /// </summary>
+    public double SubscriptFontSize => Subscript.Length switch
+    {
+        0 => 11,
+        1 => 15,
+        2 => 12,
+        _ => 11,
+    };
 
     public KeyViewModel(KeyPosition position)
     {
@@ -27,19 +97,166 @@ public partial class KeyViewModel : ObservableObject
     /// Pushes a new binding from the active layer into this view model.
     /// Driven by <see cref="MainWindowViewModel"/> on layer change.
     /// </summary>
-    public void ApplyBinding(KeyBinding binding, bool isSignalMacro, bool isUntrackable)
+    public void ApplyBinding(KeyBinding binding, bool isSignalMacro, bool isUntrackable, int? targetLayer, string? targetLayerName)
     {
         Behavior = binding.Behavior;
-        Label = FormatLabel(binding);
         IsLayerSignalKey = isSignalMacro;
         IsUntrackableLayerSwitch = isUntrackable;
+        KeyFillColor = ResolveFillColor(binding, targetLayer);
+        IconName = NormalizeIconName(binding.DecorationIcon);
+
+        // decoration.icon acts as flair above the label — if a decoration.label
+        // is also set, it still drives the main label. Derived label/subscript
+        // logic is skipped so the user-authored pairing wins cleanly.
+        if (!string.IsNullOrEmpty(IconName))
+        {
+            Label = binding.DecorationLabel ?? "";
+            Subscript = "";
+            TopLeftLabel = "";
+            return;
+        }
+
+        var (label, sub, topLeft) = FormatBinding(binding, targetLayerName);
+        Label = label;
+        Subscript = sub;
+        TopLeftLabel = topLeft;
     }
 
-    private static string FormatLabel(KeyBinding b) => b.Behavior switch
+    /// <summary>
+    /// Fill-color precedence:
+    /// <list type="number">
+    /// <item><c>decoration.background</c> from the Moergo editor (user-authored).</item>
+    /// <item>Target layer's palette color (for <c>&amp;lt</c> and signal-macro keys).</item>
+    /// <item>Empty string — the view renders the default <c>KeyFill</c>.</item>
+    /// </list>
+    /// </summary>
+    private static string ResolveFillColor(KeyBinding b, int? targetLayer)
     {
-        "&trans" => "▽",
-        "&none" => "",
-        _ when b.Params.Count == 0 => b.Behavior.TrimStart('&'),
-        _ => string.Join(' ', b.Params),
+        if (!string.IsNullOrWhiteSpace(b.DecorationBackground))
+            return b.DecorationBackground!;
+        if (targetLayer is int layer)
+            return LayerColorPalette.GetColor(layer);
+        return DefaultKeyFill;
+    }
+
+    private static (string Label, string Subscript, string TopLeft) FormatBinding(KeyBinding b, string? targetLayerName)
+    {
+        // User-authored decoration.label from the Moergo editor wins outright.
+        if (!string.IsNullOrEmpty(b.DecorationLabel))
+            return (b.DecorationLabel, "", "");
+
+        switch (b.Behavior)
+        {
+            case "&trans": return ("▽", "", "");
+            case "&none": return ("", "", "");
+            case "&kp" when b.Params.Count >= 1:
+                var (kpLabel, kpSub) = ZmkKeycodeLabel.FormatKpParams(b.Params);
+                return (kpLabel, kpSub, "");
+            case "&to" when b.Params.Count >= 1:
+                return (targetLayerName ?? ("L" + b.Params[0]), "", "To Layer");
+            case "&lt" when b.Params.Count == 2 && int.TryParse(b.Params[0], out _):
+                return (ZmkKeycodeLabel.Display(b.Params[1]),
+                        targetLayerName ?? ("L" + b.Params[0]),
+                        "Layer Tap");
+
+            // Standard ZMK system behaviors (magic / adjust layer).
+            case "&bt" when b.Params.Count >= 1:
+                return (FormatBtParams(b.Params), "", "Bluetooth");
+            case "&out" when b.Params.Count >= 1:
+                return (FormatOutParam(b.Params[0]), "", "Output");
+            case "&sys_reset": return ("Reset", "", "System");
+            case "&bootloader": return ("Boot", "", "System");
+            case "&ext_power" when b.Params.Count >= 1:
+                return (FormatExtPowerParam(b.Params[0]), "", "Ext Power");
+            case "&rgb_ug" when b.Params.Count >= 1:
+                return (FormatRgbParam(b.Params[0]), "", "Underglow");
+        }
+
+        // Home-row-mod macro convention: &HRM_<name> <modifier-keycode> <base-keycode>.
+        if (b.Behavior.StartsWith("&HRM_", StringComparison.Ordinal) && b.Params.Count == 2)
+        {
+            var mod = ZmkKeycodeLabel.ModifierSubscript(b.Params[0]) ?? b.Params[0];
+            return (ZmkKeycodeLabel.Display(b.Params[1]), mod, "");
+        }
+
+        // Moergo magic-layer macro wrappers: `&bt_0`..`&bt_4`, `&bt_clr`, etc.
+        if (b.Behavior.StartsWith("&bt_", StringComparison.Ordinal))
+        {
+            var tail = b.Behavior.Substring(4).Replace('_', ' ').ToUpperInvariant();
+            return (tail, "", "Bluetooth");
+        }
+
+        if (b.Params.Count == 0) return (b.Behavior.TrimStart('&'), "", "");
+        return (string.Join(' ', b.Params), "", "");
+    }
+
+    private static string FormatBtParams(IReadOnlyList<string> p) => p[0] switch
+    {
+        "BT_SEL" when p.Count >= 2 => p[1],
+        "BT_CLR" => "Clear",
+        "BT_CLR_ALL" => "Clr All",
+        "BT_NXT" => "Next",
+        "BT_PRV" => "Prev",
+        "BT_DISC" when p.Count >= 2 => "Disc " + p[1],
+        _ => p[0],
     };
+
+    private static string FormatOutParam(string p) => p switch
+    {
+        "OUT_TOG" => "Toggle",
+        "OUT_USB" => "USB",
+        "OUT_BLE" => "BT",
+        _ => p,
+    };
+
+    private static string FormatExtPowerParam(string p) => p switch
+    {
+        "EP_ON" => "On",
+        "EP_OFF" => "Off",
+        "EP_TOG" => "Toggle",
+        _ => p,
+    };
+
+    private static string FormatRgbParam(string p) => p switch
+    {
+        "RGB_ON"  => "On",
+        "RGB_OFF" => "Off",
+        "RGB_TOG" => "Toggle",
+        "RGB_EFF" => "Effect +",
+        "RGB_EFR" => "Effect −",
+        "RGB_HUI" => "Hue +",
+        "RGB_HUD" => "Hue −",
+        "RGB_SAI" => "Sat +",
+        "RGB_SAD" => "Sat −",
+        "RGB_BRI" => "Bri +",
+        "RGB_BRD" => "Bri −",
+        "RGB_SPI" => "Spd +",
+        "RGB_SPD" => "Spd −",
+        _ => p,
+    };
+
+    /// <summary>
+    /// Translates Moergo editor's icon identifiers to Font Awesome 6 names.
+    /// Handles (a) Ionicons prefixed with <c>io-</c> that have FA equivalents,
+    /// and (b) FA4 / FA5 names that were renamed in FA6 Free.
+    /// </summary>
+    private static string NormalizeIconName(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw)) return "";
+        return raw switch
+        {
+            // Ionicons → FA
+            "io-finger-print" => "fa-fingerprint",
+
+            // FA4/FA5 → FA6 renames (only the ones actually used in Moergo's JSON).
+            "fa-search" => "fa-magnifying-glass",
+            "fa-search-plus" => "fa-magnifying-glass-plus",
+            "fa-search-minus" => "fa-magnifying-glass-minus",
+            "fa-redo" => "fa-rotate-right",
+            "fa-undo" => "fa-rotate-left",
+            "fa-cut" => "fa-scissors",
+
+            _ => raw,
+        };
+    }
 }

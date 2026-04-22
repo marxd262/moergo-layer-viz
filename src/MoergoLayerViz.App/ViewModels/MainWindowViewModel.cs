@@ -28,6 +28,11 @@ public partial class MainWindowViewModel : ObservableObject
     private LayerSignalTable _signalTable = new(new Dictionary<string, SignalKeyMapping>());
     private IReadOnlyList<UntrackableLayerSwitch> _untrackable = Array.Empty<UntrackableLayerSwitch>();
 
+    // Reverse adjacency: <layer> → set of layers that can push this layer onto
+    // the active stack (via &mo / &lt / &sl / &tog / signal macro). Used to
+    // resolve `&trans` fall-through when viewing a layer statically.
+    private Dictionary<int, HashSet<int>> _layerPredecessors = new();
+
     private IKeyEventSource? _keyEventSource;
     private HotkeyLayerTracker? _tracker;
 
@@ -157,6 +162,7 @@ public partial class MainWindowViewModel : ObservableObject
             _signalMacros = SignalMacroScanner.DetectSignalMacros(config);
             _signalTable = LayerSignalTable.Build(config, _signalMacros);
             _untrackable = SignalMacroScanner.FindUntrackableLayerSwitches(config, _signalMacros);
+            _layerPredecessors = BuildLayerPredecessors(config, _signalMacros);
 
             _tracker?.UpdateTable(_signalTable);
 
@@ -222,20 +228,143 @@ public partial class MainWindowViewModel : ObservableObject
         ActiveLayerIndex = index;
         var layer = _config.Layers[index];
 
-        var signalNames = new HashSet<string>(_signalMacros.Select(m => m.MacroName), StringComparer.Ordinal);
+        var signalByName = _signalMacros.ToDictionary(m => m.MacroName, StringComparer.Ordinal);
         var untrackableSet = new HashSet<(int layer, int key)>(_untrackable.Select(u => (u.LayerIndex, u.KeyIndex)));
 
         for (int i = 0; i < Keys.Count; i++)
         {
-            var binding = i < layer.Bindings.Count ? layer.Bindings[i] : KeyBinding.Transparent;
+            // Resolve the effective binding by walking the predecessor graph:
+            // `&trans` falls through to the layer that can activate this one
+            // (recursively) until a non-transparent binding is found.
+            var binding = ResolveEffectiveBinding(layer.Index, i);
+
+            var isSignal = signalByName.TryGetValue(binding.Behavior, out var signalMacro);
+            var targetLayer = ResolveTargetLayer(binding, isSignal ? signalMacro : null);
+            var targetLayerName = targetLayer is int tl && tl >= 0 && tl < _config.Layers.Count
+                ? _config.Layers[tl].Name
+                : null;
             Keys[i].ApplyBinding(
                 binding,
-                isSignalMacro: signalNames.Contains(binding.Behavior),
-                isUntrackable: untrackableSet.Contains((layer.Index, i)));
+                isSignalMacro: isSignal,
+                isUntrackable: untrackableSet.Contains((layer.Index, i)),
+                targetLayer: targetLayer,
+                targetLayerName: targetLayerName);
         }
 
         for (int i = 0; i < Layers.Count; i++)
             Layers[i].IsSelected = Layers[i].Index == index;
+    }
+
+    /// <summary>
+    /// Builds the reverse-adjacency map: for each layer, the set of layers
+    /// that can push it onto the active stack. Uses the same stack-aware
+    /// behaviors as ZMK — <c>&amp;mo / &amp;lt / &amp;sl / &amp;tog</c>
+    /// and signal macros (all of which wrap <c>&amp;mo</c>). <c>&amp;to</c>
+    /// is excluded because it replaces the default layer rather than
+    /// stacking above it.
+    /// </summary>
+    private static Dictionary<int, HashSet<int>> BuildLayerPredecessors(
+        KeyboardConfig config,
+        IReadOnlyList<SignalMacro> signalMacros)
+    {
+        var result = new Dictionary<int, HashSet<int>>();
+        var signalByName = signalMacros.ToDictionary(m => m.MacroName, StringComparer.Ordinal);
+
+        for (int m = 0; m < config.Layers.Count; m++)
+        {
+            foreach (var b in config.Layers[m].Bindings)
+            {
+                int? target = null;
+
+                if ((b.Behavior == "&mo" || b.Behavior == "&lt"
+                     || b.Behavior == "&sl" || b.Behavior == "&tog")
+                    && b.Params.Count >= 1 && int.TryParse(b.Params[0], out var bareLayer))
+                {
+                    target = bareLayer;
+                }
+                else if (signalByName.TryGetValue(b.Behavior, out var sig)
+                    && b.Params.Count > sig.LayerParamIndex
+                    && int.TryParse(b.Params[sig.LayerParamIndex], out var sigLayer))
+                {
+                    target = sigLayer;
+                }
+
+                if (target is int n && n >= 0 && n < config.Layers.Count && n != m)
+                {
+                    if (!result.TryGetValue(n, out var preds))
+                        result[n] = preds = new HashSet<int>();
+                    preds.Add(m);
+                }
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Walks the predecessor graph from <paramref name="layerIdx"/> to find
+    /// the binding that would actually fire at <paramref name="keyIdx"/>.
+    /// If the binding at the given layer is <c>&amp;trans</c>, recursively
+    /// checks each predecessor layer (the ones that can stack this layer
+    /// on top of them) and returns the first non-transparent result.
+    /// Base-layer (0) <c>&amp;trans</c> stays transparent.
+    /// </summary>
+    private KeyBinding ResolveEffectiveBinding(int layerIdx, int keyIdx)
+        => ResolveEffectiveBinding(layerIdx, keyIdx, new HashSet<int>());
+
+    private KeyBinding ResolveEffectiveBinding(int layerIdx, int keyIdx, HashSet<int> visited)
+    {
+        if (_config is null || !visited.Add(layerIdx)) return KeyBinding.Transparent;
+        if (layerIdx < 0 || layerIdx >= _config.Layers.Count) return KeyBinding.Transparent;
+
+        var layer = _config.Layers[layerIdx];
+        var binding = keyIdx < layer.Bindings.Count ? layer.Bindings[keyIdx] : KeyBinding.Transparent;
+        if (binding.Behavior != "&trans") return binding;
+
+        // Try direct predecessors in index order — deterministic, and usually
+        // puts the closer-to-base layers first.
+        if (_layerPredecessors.TryGetValue(layerIdx, out var preds))
+        {
+            foreach (var p in preds.OrderBy(x => x))
+            {
+                var ft = ResolveEffectiveBinding(p, keyIdx, visited);
+                if (ft.Behavior != "&trans") return ft;
+            }
+        }
+
+        // Fallback: if we're not on base and base wasn't in the predecessor
+        // chain (orphan layer with no recorded activation), fall through to
+        // base directly so the label is at least meaningful.
+        if (layerIdx != 0)
+        {
+            var ft = ResolveEffectiveBinding(0, keyIdx, visited);
+            if (ft.Behavior != "&trans") return ft;
+        }
+
+        return binding;
+    }
+
+    /// <summary>
+    /// For a key binding, returns which layer it activates when pressed
+    /// (if any). Signal macros route through <see cref="SignalMacro.LayerParamIndex"/>;
+    /// the bare ZMK layer-switch behaviors (<c>&amp;to / &amp;mo / &amp;tog /
+    /// &amp;lt / &amp;sl</c>) read their first param directly. Returns null
+    /// for non-layer-switching bindings.
+    /// </summary>
+    private static int? ResolveTargetLayer(KeyBinding binding, SignalMacro? signal)
+    {
+        if (signal is not null && binding.Params.Count > signal.LayerParamIndex
+            && int.TryParse(binding.Params[signal.LayerParamIndex], out var signalLayer))
+            return signalLayer;
+
+        if ((binding.Behavior == "&to" || binding.Behavior == "&mo"
+             || binding.Behavior == "&tog" || binding.Behavior == "&lt"
+             || binding.Behavior == "&sl")
+            && binding.Params.Count >= 1
+            && int.TryParse(binding.Params[0], out var paramLayer))
+            return paramLayer;
+
+        return null;
     }
 
     private void ToggleLiveHighlighting()

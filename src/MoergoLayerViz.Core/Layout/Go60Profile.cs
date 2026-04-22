@@ -11,8 +11,8 @@ namespace MoergoLayerViz.Core.Layout;
 /// <list type="bullet">
 ///   <item><description>Rows 1-4 (indices 0-47): 12 keys each — left hand outer→inner, then right hand inner→outer.</description></item>
 ///   <item><description>Row 5 (indices 48-53): 6 keys — only the ring/middle/index columns have a 5th key; left hand outer→inner then right hand inner→outer.</description></item>
-///   <item><description>Left thumb cluster (indices 54-56): outer→inner (rotations 10°, 20°, 35°).</description></item>
-///   <item><description>Right thumb cluster (indices 57-59): inner→outer (rotations -35°, -20°, -10°).</description></item>
+///   <item><description>Left thumb cluster (indices 54-56): outer→inner (rotations 10°, 22°, 34°).</description></item>
+///   <item><description>Right thumb cluster (indices 57-59): inner→outer (rotations -34°, -22°, -10°).</description></item>
 /// </list>
 /// Confirmed against a real GO60 export: binding 56 = rightmost left-thumb key
 /// (TAB on the shipped base layer), binding 57 = leftmost right-thumb key (RCTRL).
@@ -22,8 +22,12 @@ public sealed class Go60Profile : IKeyboardProfile
     public string Id => "GO60";
     public string DisplayName => "Moergo GO60";
     public int KeyCount => 60;
-    public double CanvasWidth => 1400;
-    public double CanvasHeight => 600;
+    // Canvas tightened so horizontal margin is half a key-width (30) on both
+    // sides: leftmost key sits at x=30, rightmost at x=1170 (spans to 1230),
+    // giving a total width of 1260. Vertical margin is one full key-height (60):
+    // topmost key at y=60, bottommost at y=384 (spans to 444), canvas height 504.
+    public double CanvasWidth => 1260;
+    public double CanvasHeight => 504;
 
     public IReadOnlyList<KeyPosition> Keys { get; } = BuildKeys();
 
@@ -36,26 +40,26 @@ public sealed class Go60Profile : IKeyboardProfile
         // sits there instead).
         (double X, double Top, bool HasRow5)[] leftCols =
         {
-            (40,  110, false), // outer pinky
-            (104, 106, false), // pinky
-            (168,  76, true ), // ring
-            (232,  76, true ), // middle
-            (296,  76, true ), // index
-            (360,  76, false), // inner index
+            (30,  94, false), // outer pinky
+            (94,  90, false), // pinky
+            (158, 60, true ), // ring
+            (222, 60, true ), // middle
+            (286, 60, true ), // index
+            (350, 60, false), // inner index
         };
 
         // Right-hand columns, outer-to-inner to mirror `leftCols`. When
         // iterating a row left-to-right across the full keyboard we walk
         // `leftCols` forward then `rightCols` in reverse, so the innermost
-        // right column (x=860) comes first on the right side.
+        // right column (x=850) comes first on the right side.
         (double X, double Top, bool HasRow5)[] rightCols =
         {
-            (1180, 110, false), // outer pinky
-            (1116, 106, false), // pinky
-            (1052,  76, true ), // ring
-            ( 988,  76, true ), // middle
-            ( 924,  76, true ), // index
-            ( 860,  76, false), // inner index
+            (1170, 94, false), // outer pinky
+            (1106, 90, false), // pinky
+            (1042, 60, true ), // ring
+            ( 978, 60, true ), // middle
+            ( 914, 60, true ), // index
+            ( 850, 60, false), // inner index
         };
 
         const double RowPitch = 64;
@@ -81,14 +85,15 @@ public sealed class Go60Profile : IKeyboardProfile
 
         // Left thumb cluster (54-56): outer → inner. Rotations fan the keys
         // toward the thumb's natural arc; coords match the xaml.io sketch.
-        list.Add(new KeyPosition(idx++, 370, 340, RotationDegrees: 10));
-        list.Add(new KeyPosition(idx++, 440, 360, RotationDegrees: 20));
-        list.Add(new KeyPosition(idx++, 504, 400, RotationDegrees: 35));
+        list.Add(new KeyPosition(idx++, 360, 320, RotationDegrees: 10));
+        list.Add(new KeyPosition(idx++, 437, 338, RotationDegrees: 22));
+        list.Add(new KeyPosition(idx++, 509, 370, RotationDegrees: 34));
 
-        // Right thumb cluster (57-59): inner → outer, mirroring the left.
-        list.Add(new KeyPosition(idx++, 716, 400, RotationDegrees: -35));
-        list.Add(new KeyPosition(idx++, 780, 360, RotationDegrees: -20));
-        list.Add(new KeyPosition(idx++, 850, 340, RotationDegrees: -10));
+        // Right thumb cluster (57-59): inner → outer, mirroring the left
+        // around centerline x=630 (canvas width 1260).
+        list.Add(new KeyPosition(idx++, 702, 402, RotationDegrees: -34));
+        list.Add(new KeyPosition(idx++, 768, 360, RotationDegrees: -22));
+        list.Add(new KeyPosition(idx++, 840, 330, RotationDegrees: -10));
 
         return list;
     }

@@ -32,6 +32,26 @@ internal sealed class MoergoBinding
     /// <summary>Ordered parameters. Empty for zero-arg behaviors like <c>&amp;trans</c>.</summary>
     [JsonPropertyName("params")]
     public List<MoergoParam>? Params { get; set; }
+
+    /// <summary>
+    /// Optional user-authored decoration (label/icon/background) set in the
+    /// Moergo layout editor. When a label is provided it overrides the
+    /// derived display label.
+    /// </summary>
+    [JsonPropertyName("decoration")]
+    public MoergoDecoration? Decoration { get; set; }
+}
+
+internal sealed class MoergoDecoration
+{
+    [JsonPropertyName("label")]
+    public string? Label { get; set; }
+
+    [JsonPropertyName("icon")]
+    public string? Icon { get; set; }
+
+    [JsonPropertyName("background")]
+    public string? Background { get; set; }
 }
 
 internal sealed class MoergoParam

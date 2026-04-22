@@ -1,6 +1,9 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:MoergoLayerViz.App.ViewModels"
+             xmlns:conv="using:Avalonia.Data.Converters"
+             xmlns:convApp="using:MoergoLayerViz.App.Converters"
+             xmlns:i="https://github.com/projektanker/icons.avalonia"
              x:Class="MoergoLayerViz.App.Views.BoardView"
              x:DataType="vm:MainWindowViewModel">
 
@@ -44,16 +47,12 @@
                         </Grid.RenderTransform>
                         <Grid.RenderTransformOrigin>0.5,0.5</Grid.RenderTransformOrigin>
 
-                        <!-- Default fill; swapped out for layer-signal and untrackable cases. -->
+                        <!-- Key fill: driven by KeyFillColor (precedence: decoration.background
+                             > target-layer palette color > default #F2F2F2). -->
                         <Rectangle RadiusX="6" RadiusY="6"
                                    Stroke="{StaticResource KeyStroke}"
                                    StrokeThickness="1"
-                                   Fill="{StaticResource KeyFill}"
-                                   IsVisible="{Binding !IsLayerSignalKey}" />
-
-                        <Rectangle RadiusX="6" RadiusY="6"
-                                   Fill="{StaticResource LayerKeyFill}"
-                                   IsVisible="{Binding IsLayerSignalKey}" />
+                                   Fill="{Binding KeyFillColor, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}" />
 
                         <!-- Untrackable-layer warning: pink border over the base fill -->
                         <Rectangle RadiusX="6" RadiusY="6"
@@ -62,25 +61,50 @@
                                    Fill="Transparent"
                                    IsVisible="{Binding IsUntrackableLayerSwitch}" />
 
-                        <TextBlock Text="{Binding Label}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   TextWrapping="Wrap"
-                                   TextAlignment="Center"
-                                   Foreground="{StaticResource KeyLabel}"
-                                   IsVisible="{Binding !IsLayerSignalKey}" />
+                        <!-- Category hint in the top-left corner (e.g. "To Layer",
+                             "Layer Tap") — distinguishes layer-switch keys at a
+                             glance without cluttering the main glyph. -->
+                        <TextBlock Text="{Binding TopLeftLabel}"
+                                   HorizontalAlignment="Left"
+                                   VerticalAlignment="Top"
+                                   Margin="4,5,0,0"
+                                   FontSize="7"
+                                   FontWeight="Bold"
+                                   Opacity="0.75"
+                                   FontStyle="Italic"
+                                   Foreground="{Binding KeyForegroundColor, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
+                                   IsVisible="{Binding TopLeftLabel, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
 
-                        <TextBlock Text="{Binding Label}"
-                                   HorizontalAlignment="Center"
-                                   VerticalAlignment="Center"
-                                   FontSize="11"
-                                   FontWeight="SemiBold"
-                                   TextWrapping="Wrap"
-                                   TextAlignment="Center"
-                                   Foreground="{StaticResource LayerKeyLabel}"
-                                   IsVisible="{Binding IsLayerSignalKey}" />
+                        <!-- Label stack: optional Font Awesome icon on top (from
+                             decoration.icon), then main glyph, then optional
+                             subscript. Dark foreground works across default
+                             white and the pastel layer palette. -->
+                        <StackPanel Orientation="Vertical"
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    Spacing="2">
+                            <i:Icon Value="{Binding IconName}"
+                                    FontSize="14"
+                                    Opacity="0.8"
+                                    HorizontalAlignment="Center"
+                                    Foreground="{Binding KeyForegroundColor, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
+                                    IsVisible="{Binding IconName, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                            <TextBlock Text="{Binding Label}"
+                                       HorizontalAlignment="Center"
+                                       FontSize="{Binding LabelFontSize}"
+                                       FontWeight="SemiBold"
+                                       TextWrapping="Wrap"
+                                       TextAlignment="Center"
+                                       Foreground="{Binding KeyForegroundColor, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}" />
+                            <TextBlock Text="{Binding Subscript}"
+                                       HorizontalAlignment="Center"
+                                       FontSize="{Binding SubscriptFontSize}"
+                                       FontWeight="Bold"
+                                       Opacity="0.9"
+                                       TextAlignment="Center"
+                                       Foreground="{Binding KeyForegroundColor, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
+                                       IsVisible="{Binding Subscript, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />
+                        </StackPanel>
                     </Grid>
                 </DataTemplate>
             </ItemsControl.ItemTemplate>

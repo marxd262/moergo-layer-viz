@@ -29,6 +29,31 @@
         <Style Selector="Button.toggle.active">
             <Setter Property="Opacity" Value="1.0" />
         </Style>
+        <!-- Layer-tab override: text labels on #2A2A3D need more contrast than icons
+             in the status bar. Inactive stays readable (0.65); active gets a
+             distinct raised-chip look via background + brighter border. -->
+        <Style Selector="Button.toggle.layerTab">
+            <Setter Property="Opacity" Value="0.65" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+        </Style>
+        <Style Selector="Button.toggle.layerTab:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#363649" />
+            <Setter Property="BorderBrush" Value="#4A4A63" />
+        </Style>
+        <Style Selector="Button.toggle.layerTab.active">
+            <Setter Property="Opacity" Value="1.0" />
+        </Style>
+        <Style Selector="Button.toggle.layerTab.active /template/ ContentPresenter">
+            <Setter Property="Background" Value="#3E3E5C" />
+            <Setter Property="BorderBrush" Value="#6A6A88" />
+        </Style>
+        <Style Selector="Button.toggle.layerTab.active:pointerover /template/ ContentPresenter">
+            <Setter Property="Background" Value="#46466A" />
+            <Setter Property="BorderBrush" Value="#7A7A9A" />
+        </Style>
     </Window.Styles>
 
     <Grid RowDefinitions="Auto,*,Auto">
@@ -167,7 +192,7 @@
                         <DataTemplate x:DataType="vm:LayerViewModel">
                             <Button Command="{Binding SelectCommand}"
                                     MinWidth="48"
-                                    Classes="toggle"
+                                    Classes="toggle layerTab"
                                     Classes.active="{Binding IsSelected}"
                                     HorizontalContentAlignment="Center"
                                     Padding="8,4">
