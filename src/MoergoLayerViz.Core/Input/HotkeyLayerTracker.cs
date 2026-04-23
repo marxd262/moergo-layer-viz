@@ -70,8 +70,17 @@ public sealed class HotkeyLayerTracker : IDisposable
         {
             if (ev.Kind == KeyEventKind.Pressed)
             {
-                _heldLayers.Push(mapping.TargetLayer);
-                SetCurrent(mapping.TargetLayer);
+                // Guard against OS auto-repeat: macOS fires fresh Pressed
+                // events at ~10Hz while a key is held (no intervening
+                // Released). Without this check, each repeat pushes another
+                // copy onto the stack and only the first release pops — so
+                // the layer stays "stuck" until we receive as many releases
+                // as pushes (which never happens for a single physical press).
+                if (_heldLayers.Count == 0 || _heldLayers.Peek() != mapping.TargetLayer)
+                {
+                    _heldLayers.Push(mapping.TargetLayer);
+                    SetCurrent(mapping.TargetLayer);
+                }
             }
             else // Released
             {

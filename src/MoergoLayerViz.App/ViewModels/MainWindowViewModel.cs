@@ -36,11 +36,28 @@ public partial class MainWindowViewModel : ObservableObject
     private IKeyEventSource? _keyEventSource;
     private HotkeyLayerTracker? _tracker;
 
-    // Active-layer keycode → KeyViewModel(s) lookup, rebuilt on every layer
-    // change so OnKeyObservedFromHook can flash the right physical key.
+    // Active-layer (modifier-set + keycode) → KeyViewModel(s) lookup, rebuilt
+    // on every layer change so OnKeyObservedFromHook can flash the right
+    // physical key. Key format: "shift+ctrl|N8" — sorted mod categories, then
+    // '|', then the base keycode. Modifiers are folded to 4 categories
+    // (shift/ctrl/alt/gui) so LS(...) and RS(...) collapse together; this
+    // matches the OS, which reports "some shift was held" and doesn't
+    // distinguish left/right for resulting characters.
     private Dictionary<string, List<KeyViewModel>> _zmkLookup = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _heldModifierCategories = new(StringComparer.Ordinal);
     private readonly Dictionary<KeyViewModel, CancellationTokenSource> _pressCts = new();
     private const int PressHighlightMs = 90;
+
+    // Pending modifier-keypress highlights: when the firmware synthesizes a
+    // Shift to produce a shifted symbol (e.g. pressing the `(` key on a
+    // symbol layer), the OS sees Shift + N9 in the same tick. If we flashed
+    // the modifier key immediately we'd light up the thumb-shift on every
+    // shifted symbol — visual noise. Instead, defer a mod-key highlight by
+    // ModifierGraceMs; if a non-modifier press arrives inside that window
+    // we cancel it (treat it as synthesized). A physical shift sits
+    // isolated for 50+ ms before the next keypress, so its highlight fires.
+    private readonly List<CancellationTokenSource> _pendingModHighlights = new();
+    private const int ModifierGraceMs = 25;
 
     // --- UI-bindable state ---
     [ObservableProperty] private string _statusMessage = "";
@@ -276,66 +293,217 @@ public partial class MainWindowViewModel : ObservableObject
 
     /// <summary>
     /// Rebuilds the "which physical key emits which OS keycode on the
-    /// current layer" map. Covers <c>&amp;kp</c> (modifier wrappers stripped),
-    /// <c>&amp;lt</c>, <c>&amp;HRM_*</c>, and signal macros. The emitted code
-    /// must match the form produced by
-    /// <see cref="SharpHookKeyEventSource"/> — i.e. the raw ZMK keycode
-    /// string, not the display glyph.
+    /// currently displayed layer" map. Keyed off <see cref="ActiveLayerIndex"/>
+    /// — the user wants the highlight to match what they're looking at.
+    /// If an OS keycode isn't present on the displayed layer, it's a miss
+    /// (no visible key to light up).
     /// </summary>
     private void RebuildZmkLookup(Dictionary<string, SignalMacro> signalByName)
     {
         _zmkLookup = new Dictionary<string, List<KeyViewModel>>(StringComparer.Ordinal);
         if (_config is null) return;
-        var layer = _config.Layers[ActiveLayerIndex];
+        var layerIdx = ActiveLayerIndex;
+        if (layerIdx < 0 || layerIdx >= _config.Layers.Count) layerIdx = 0;
         for (int i = 0; i < Keys.Count; i++)
         {
-            var binding = ResolveEffectiveBinding(layer.Index, i);
+            var binding = ResolveEffectiveBinding(layerIdx, i);
             var signal = signalByName.TryGetValue(binding.Behavior, out var s) ? s : null;
-            var code = ExtractEmittedZmkKeycode(binding, signal);
-            if (code is null) continue;
-            if (!_zmkLookup.TryGetValue(code, out var list))
-                _zmkLookup[code] = list = new List<KeyViewModel>();
+            var press = ExtractEmittedKeypress(binding, signal);
+            if (press is null) continue;
+            var key = BuildLookupKey(press.Value.Mods, press.Value.Code);
+            if (!_zmkLookup.TryGetValue(key, out var list))
+                _zmkLookup[key] = list = new List<KeyViewModel>();
             list.Add(Keys[i]);
         }
+        DiagnosticLog.Debug("Highlight", $"lookup rebuilt layer={layerIdx} keys=[{string.Join(",", _zmkLookup.Keys)}]");
     }
 
     /// <summary>
-    /// Returns the OS-visible ZMK keycode a binding emits on press, or null
-    /// if the binding does not surface a keycode to the host.
+    /// Returns the (modifier-set, base-keycode) pair a binding emits on press,
+    /// or null if the binding does not surface a keycode to the host.
+    /// After <see cref="MoergoJsonLoader.FlattenParams"/>, modifier wrappers
+    /// appear as flat prefix tokens (LS, LC, ...) before the innermost key at
+    /// the last position. We also fold in the implicit Shift that ZMK's
+    /// shifted-symbol aliases carry (LPAR, STAR, ...).
     /// </summary>
-    private static string? ExtractEmittedZmkKeycode(KeyBinding b, SignalMacro? signal)
+    private static (HashSet<string> Mods, string Code)? ExtractEmittedKeypress(KeyBinding b, SignalMacro? signal)
     {
+        // Which prefix of b.Params counts as the "keycode slot". Signal
+        // macros, &lt and &HRM_* prepend their own non-keycode params (layer
+        // id, hold-modifier) which are NOT wrappers and must not be folded
+        // into the mod set.
+        int startIndex;
         if (signal is not null && b.Params.Count > signal.KeyParamIndex)
-            return StripModifierWrappers(b.Params[signal.KeyParamIndex]);
-
-        switch (b.Behavior)
         {
-            case "&kp" when b.Params.Count >= 1:
-                return StripModifierWrappers(b.Params[0]);
-            case "&lt" when b.Params.Count >= 2:
-                return StripModifierWrappers(b.Params[1]);
+            startIndex = signal.KeyParamIndex;
+        }
+        else switch (b.Behavior)
+        {
+            case "&kp" when b.Params.Count >= 1: startIndex = 0; break;
+            case "&lt" when b.Params.Count >= 2: startIndex = 1; break;
+            default:
+                if (b.Behavior.StartsWith("&HRM_", StringComparison.Ordinal) && b.Params.Count >= 2)
+                    startIndex = 1;
+                else
+                    return null;
+                break;
         }
 
-        if (b.Behavior.StartsWith("&HRM_", StringComparison.Ordinal) && b.Params.Count == 2)
-            return StripModifierWrappers(b.Params[1]);
-
-        return null;
+        // Wrapper modifiers are every flat param in [startIndex .. count-2];
+        // the last param is the innermost keycode.
+        var mods = new HashSet<string>(StringComparer.Ordinal);
+        for (int i = startIndex; i < b.Params.Count - 1; i++)
+        {
+            var cat = CategoryForWrapperPrefix(b.Params[i]);
+            if (cat is not null) mods.Add(cat);
+        }
+        var (extraMods, code) = CanonicalizeKeycode(b.Params[^1]);
+        foreach (var m in extraMods) mods.Add(m);
+        return (mods, code);
     }
 
     /// <summary>
-    /// Strips one or more layers of ZMK modifier wrappers (<c>LS(...)</c>,
-    /// <c>LC(...)</c>, <c>LA(...)</c>, <c>LG(...)</c>, R* equivalents) to
-    /// reveal the base keycode. <c>LS(LBKT)</c> → <c>LBKT</c>.
+    /// Canonicalizes a ZMK keycode token, returning any modifiers the token
+    /// itself implicitly carries (shifted-symbol aliases → Shift).
     /// </summary>
-    private static readonly string[] ModWrappers = { "LS(", "LC(", "LA(", "LG(", "RS(", "RC(", "RA(", "RG(" };
-
-    private static string StripModifierWrappers(string code)
+    private static (IEnumerable<string> Mods, string Code) CanonicalizeKeycode(string raw)
     {
-        var s = code.Trim();
-        while (s.Length > 4 && s[^1] == ')' && Array.Exists(ModWrappers, w => s.StartsWith(w, StringComparison.Ordinal)))
-            s = s.Substring(3, s.Length - 4).Trim();
-        return s;
+        var s = raw.Trim();
+        if (ZmkShiftedSymbols.TryGetValue(s, out var shiftedBase))
+            return (new[] { "shift" }, shiftedBase);
+        if (ZmkPlainAliases.TryGetValue(s, out var plain))
+            return (Array.Empty<string>(), plain);
+        return (Array.Empty<string>(), s);
     }
+
+    /// <summary>
+    /// Maps ZMK long-form aliases to the short canonical form that
+    /// <see cref="SharpHookKeyEventSource"/> emits. Keymap JSON can carry
+    /// either form (EQUALS vs EQUAL, LEFT_SHIFT vs LSHFT) depending on
+    /// the Moergo editor's output. These aliases do not change the set of
+    /// modifiers that will be emitted — they're pure rename aliases.
+    /// </summary>
+    private static readonly Dictionary<string, string> ZmkPlainAliases = new(StringComparer.Ordinal)
+    {
+        // Long-form modifier aliases
+        ["LEFT_SHIFT"] = "LSHFT",       ["RIGHT_SHIFT"] = "RSHFT",
+        ["LEFT_CONTROL"] = "LCTRL",     ["RIGHT_CONTROL"] = "RCTRL",
+        ["LEFT_ALT"] = "LALT",          ["RIGHT_ALT"] = "RALT",
+        ["LEFT_GUI"] = "LGUI",          ["RIGHT_GUI"] = "RGUI",
+        ["LEFT_COMMAND"] = "LGUI",      ["RIGHT_COMMAND"] = "RGUI",
+        ["LEFT_WIN"] = "LGUI",          ["RIGHT_WIN"] = "RGUI",
+        ["LEFT_META"] = "LGUI",         ["RIGHT_META"] = "RGUI",
+
+        // Punctuation long-form
+        ["EQUALS"] = "EQUAL",
+        ["SLASH"] = "FSLH",             ["FORWARD_SLASH"] = "FSLH",
+        ["BACKSLASH"] = "BSLH",
+        ["SEMICOLON"] = "SEMI",
+        ["SINGLE_QUOTE"] = "SQT",       ["APOS"] = "SQT",       ["APOSTROPHE"] = "SQT",
+        ["PERIOD"] = "DOT",
+        ["LEFT_BRACKET"] = "LBKT",      ["RIGHT_BRACKET"] = "RBKT",
+
+        // Edit / whitespace long-form
+        ["BACKSPACE"] = "BSPC",
+        ["ENTER"] = "RET",              ["RETURN"] = "RET",
+        ["ESCAPE"] = "ESC",
+        ["DELETE"] = "DEL",
+        ["CAPSLOCK"] = "CAPS",          ["CAPS_LOCK"] = "CAPS",
+
+        // Arrows / nav
+        ["UP_ARROW"] = "UP",            ["DOWN_ARROW"] = "DOWN",
+        ["LEFT_ARROW"] = "LEFT",        ["RIGHT_ARROW"] = "RIGHT",
+        ["PAGE_UP"] = "PG_UP",          ["PAGE_DOWN"] = "PG_DN",
+        ["INSERT"] = "INS",
+
+        // Number long-form
+        ["NUMBER_0"] = "N0",            ["NUMBER_1"] = "N1",
+        ["NUMBER_2"] = "N2",            ["NUMBER_3"] = "N3",
+        ["NUMBER_4"] = "N4",            ["NUMBER_5"] = "N5",
+        ["NUMBER_6"] = "N6",            ["NUMBER_7"] = "N7",
+        ["NUMBER_8"] = "N8",            ["NUMBER_9"] = "N9",
+
+        // Keypad long-form → short form (keypad keys are not shift-wrapped)
+        ["KP_NUMBER_0"] = "KP_N0",      ["KP_NUMBER_1"] = "KP_N1",
+        ["KP_NUMBER_2"] = "KP_N2",      ["KP_NUMBER_3"] = "KP_N3",
+        ["KP_NUMBER_4"] = "KP_N4",      ["KP_NUMBER_5"] = "KP_N5",
+        ["KP_NUMBER_6"] = "KP_N6",      ["KP_NUMBER_7"] = "KP_N7",
+        ["KP_NUMBER_8"] = "KP_N8",      ["KP_NUMBER_9"] = "KP_N9",
+        ["KP_EQUALS"] = "KP_EQUAL",
+        ["KP_ASTERISK"] = "KP_MULTIPLY",
+        ["KP_PERIOD"] = "KP_DOT",
+        ["KP_SLASH"] = "KP_DIVIDE",
+    };
+
+    /// <summary>
+    /// Shifted-symbol aliases: these ZMK names implicitly include a Shift
+    /// modifier. A binding like <c>&amp;kp LPAR</c> makes the firmware emit
+    /// Shift+9, so the lookup entry must be keyed on the <em>shift+base</em>
+    /// combo, not bare N9 (which is what the number key 9 emits). The base
+    /// codes here are the unshifted US-layout counterparts.
+    /// </summary>
+    private static readonly Dictionary<string, string> ZmkShiftedSymbols = new(StringComparer.Ordinal)
+    {
+        ["EXCL"] = "N1",                ["EXCLAMATION"] = "N1",
+        ["AT"] = "N2",                  ["AT_SIGN"] = "N2",
+        ["HASH"] = "N3",                ["POUND"] = "N3",
+        ["DLLR"] = "N4",                ["DOLLAR"] = "N4",
+        ["PRCNT"] = "N5",               ["PERCENT"] = "N5",
+        ["CARET"] = "N6",
+        ["AMPS"] = "N7",                ["AMPERSAND"] = "N7",
+        ["STAR"] = "N8",                ["ASTERISK"] = "N8",
+        ["LPAR"] = "N9",                ["LEFT_PARENTHESIS"] = "N9",
+        ["RPAR"] = "N0",                ["RIGHT_PARENTHESIS"] = "N0",
+        ["LBRC"] = "LBKT",              ["LEFT_BRACE"] = "LBKT",
+        ["RBRC"] = "RBKT",              ["RIGHT_BRACE"] = "RBKT",
+        ["COLON"] = "SEMI",
+        ["DQT"] = "SQT",                ["DOUBLE_QUOTES"] = "SQT",
+        ["TILDE"] = "GRAVE",
+        ["PIPE"] = "BSLH",
+        ["QMARK"] = "FSLH",             ["QUESTION"] = "FSLH",
+        ["UNDER"] = "MINUS",            ["UNDERSCORE"] = "MINUS",
+        ["PLUS"] = "EQUAL",
+        ["LT"] = "COMMA",               ["LESS_THAN"] = "COMMA",
+        ["GT"] = "DOT",                 ["GREATER_THAN"] = "DOT",
+    };
+
+    /// <summary>
+    /// Normalizes a modifier keycode (as emitted by the hook) to its
+    /// left/right-agnostic category so the lookup matches bindings that
+    /// wrapped in LS(...) when the user physically held RSHFT (and vice
+    /// versa). Returns null for non-modifier keycodes.
+    /// </summary>
+    private static string? CategoryForModifier(string zmkCode) => zmkCode switch
+    {
+        "LSHFT" or "RSHFT" => "shift",
+        "LCTRL" or "RCTRL" => "ctrl",
+        "LALT" or "RALT" => "alt",
+        "LGUI" or "RGUI" => "gui",
+        _ => null,
+    };
+
+    /// <summary>
+    /// Categorizes a ZMK modifier-wrapper prefix (LS/RS/LC/RC/LA/RA/LG/RG)
+    /// into one of the four OS-visible categories. Returns null if the
+    /// token is not a recognized wrapper — which also acts as a sanity
+    /// stop when we're walking flattened params to build a binding's
+    /// required-modifier set.
+    /// </summary>
+    private static string? CategoryForWrapperPrefix(string p) => p switch
+    {
+        "LS" or "RS" => "shift",
+        "LC" or "RC" => "ctrl",
+        "LA" or "RA" => "alt",
+        "LG" or "RG" => "gui",
+        _ => null,
+    };
+
+    private static string BuildLookupKey(IEnumerable<string> modCategories, string code)
+    {
+        var sorted = modCategories.OrderBy(m => m, StringComparer.Ordinal);
+        return $"{string.Join("+", sorted)}|{code}";
+    }
+
 
     /// <summary>
     /// Builds the reverse-adjacency map: for each layer, the set of layers
@@ -514,14 +682,64 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void OnKeyObservedFromHook(KeyEvent ev)
     {
-        if (ev.Kind != KeyEventKind.Pressed) return;
-        if (!_zmkLookup.TryGetValue(ev.Keycode, out var targets) || targets.Count == 0) return;
+        var modCat = CategoryForModifier(ev.Keycode);
 
-        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        if (ev.Kind == KeyEventKind.Released)
         {
-            foreach (var vm in targets)
-                PulseKeyPress(vm);
-        });
+            if (modCat is not null) _heldModifierCategories.Remove(modCat);
+            return;
+        }
+
+        // For modifier keypresses themselves, look up with NO modifiers held
+        // — the binding `&kp LSHFT` has no wrappers and is keyed as "|LSHFT".
+        // For all other keys, use the currently-held modifier set so the
+        // lookup discriminates between (e.g.) `&kp N8` and `&kp LS(N8)`.
+        var contextMods = modCat is not null ? Array.Empty<string>() : (IEnumerable<string>)_heldModifierCategories;
+        var key = BuildLookupKey(contextMods, ev.Keycode);
+
+        if (!_zmkLookup.TryGetValue(key, out var targets) || targets.Count == 0)
+        {
+            DiagnosticLog.Debug("Highlight", $"miss key={key} layer={ActiveLayerIndex} tableSize={_zmkLookup.Count}");
+        }
+        else
+        {
+            DiagnosticLog.Debug("Highlight", $"hit key={key} layer={ActiveLayerIndex} → {targets.Count} key(s)");
+            if (modCat is not null)
+            {
+                // Defer modifier highlight — cancelled below if a companion
+                // non-modifier press follows within ModifierGraceMs.
+                var cts = new CancellationTokenSource();
+                lock (_pendingModHighlights) _pendingModHighlights.Add(cts);
+                _ = Task.Delay(ModifierGraceMs, cts.Token).ContinueWith(t =>
+                {
+                    if (t.IsCanceled) return;
+                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    {
+                        lock (_pendingModHighlights) _pendingModHighlights.Remove(cts);
+                        foreach (var vm in targets) PulseKeyPress(vm);
+                        cts.Dispose();
+                    });
+                }, TaskScheduler.Default);
+            }
+            else
+            {
+                // Real (non-modifier) keypress — cancel any pending mod
+                // highlights; they were synthesized by the firmware.
+                lock (_pendingModHighlights)
+                {
+                    foreach (var c in _pendingModHighlights) c.Cancel();
+                    _pendingModHighlights.Clear();
+                }
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    foreach (var vm in targets) PulseKeyPress(vm);
+                });
+            }
+        }
+
+        // Update held-mod state AFTER the lookup so a modifier key's own
+        // press still matches its no-mod binding.
+        if (modCat is not null) _heldModifierCategories.Add(modCat);
     }
 
     private void PulseKeyPress(KeyViewModel vm)
@@ -553,6 +771,7 @@ public partial class MainWindowViewModel : ObservableObject
     private void ResetLayerState()
     {
         _tracker?.Reset();
+        _heldModifierCategories.Clear();
         ApplyActiveLayer(0);
     }
 
