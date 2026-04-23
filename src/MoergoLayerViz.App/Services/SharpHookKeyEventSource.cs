@@ -1,4 +1,3 @@
-using MoergoLayerViz.Core.Diagnostics;
 using MoergoLayerViz.Core.Input;
 using SharpHook;
 using SharpHook.Data;
@@ -6,7 +5,7 @@ using SharpHook.Data;
 namespace MoergoLayerViz.App.Services;
 
 /// <summary>
-/// Adapts SharpHook's <see cref="SimpleGlobalHook"/> to the Core
+/// Adapts the shared <see cref="SharpHookProvider"/> hook to the Core
 /// <see cref="IKeyEventSource"/> abstraction, translating
 /// <see cref="KeyCode"/> enum values to ZMK-style keycode strings
 /// ("A", "F20", "N1", ...) that match what the Moergo editor writes
@@ -19,29 +18,45 @@ namespace MoergoLayerViz.App.Services;
 /// </summary>
 public sealed class SharpHookKeyEventSource : IKeyEventSource
 {
-    private SimpleGlobalHook? _hook;
+    private readonly SharpHookProvider _provider;
+    private bool _started;
 
     public event Action<KeyEvent>? KeyEvent;
 
+    /// <summary>
+    /// Raised on a threadpool thread when the underlying hook faults — most
+    /// commonly on macOS when Accessibility permission is denied. Forwarded
+    /// from <see cref="SharpHookProvider"/>. Subscribers must marshal to
+    /// the UI thread themselves.
+    /// </summary>
+    public event Action<Exception>? HookFailed;
+
+    public SharpHookKeyEventSource(SharpHookProvider provider)
+    {
+        _provider = provider;
+    }
+
     public void Start()
     {
-        if (_hook is not null) return;
-
-        _hook = new SimpleGlobalHook();
-        _hook.KeyPressed += OnKeyPressed;
-        _hook.KeyReleased += OnKeyReleased;
-        _hook.RunAsync();
-        DiagnosticLog.Info("KeyEventSource", "Global hook started");
+        if (_started) return;
+        _started = true;
+        _provider.KeyPressed += OnKeyPressed;
+        _provider.KeyReleased += OnKeyReleased;
+        _provider.HookFailed += OnHookFailed;
+        _provider.Acquire();
     }
 
     public void Stop()
     {
-        if (_hook is null) return;
-        _hook.KeyPressed -= OnKeyPressed;
-        _hook.KeyReleased -= OnKeyReleased;
-        _hook.Dispose();
-        _hook = null;
+        if (!_started) return;
+        _started = false;
+        _provider.KeyPressed -= OnKeyPressed;
+        _provider.KeyReleased -= OnKeyReleased;
+        _provider.HookFailed -= OnHookFailed;
+        _provider.Release();
     }
+
+    private void OnHookFailed(Exception ex) => HookFailed?.Invoke(ex);
 
     private void OnKeyPressed(object? sender, KeyboardHookEventArgs e)
     {

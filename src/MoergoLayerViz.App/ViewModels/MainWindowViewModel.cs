@@ -36,13 +36,24 @@ public partial class MainWindowViewModel : ObservableObject
     private IKeyEventSource? _keyEventSource;
     private HotkeyLayerTracker? _tracker;
 
+    // Active-layer keycode → KeyViewModel(s) lookup, rebuilt on every layer
+    // change so OnKeyObservedFromHook can flash the right physical key.
+    private Dictionary<string, List<KeyViewModel>> _zmkLookup = new(StringComparer.Ordinal);
+    private readonly Dictionary<KeyViewModel, CancellationTokenSource> _pressCts = new();
+    private const int PressHighlightMs = 90;
+
     // --- UI-bindable state ---
     [ObservableProperty] private string _statusMessage = "";
     [ObservableProperty] private bool _isAlwaysOnTop;
     [ObservableProperty] private bool _isLiveHighlightingEnabled;
     [ObservableProperty] private bool _isAutoLayerSwitchEnabled;
     [ObservableProperty] private bool _hasLayoutLoaded;
-    [ObservableProperty] private int _activeLayerIndex;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(ActiveLayerTintColor))]
+    private int _activeLayerIndex;
+
+    /// <summary>Palette color for the active layer — used as the press-highlight pulse fill.</summary>
+    public string ActiveLayerTintColor => LayerColorPalette.GetColor(ActiveLayerIndex);
 
     public ObservableCollection<KeyViewModel> Keys { get; } = new();
     public ObservableCollection<LayerViewModel> Layers { get; } = new();
@@ -57,6 +68,9 @@ public partial class MainWindowViewModel : ObservableObject
     public Action? ToggleWindowRequested { get; set; }
     public Func<Task>? LoadLayoutRequested { get; set; }
     public Func<Task>? CopyDiagnosticsRequested { get; set; }
+    public Action? ShowAccessibilityPromptRequested { get; set; }
+
+    private bool _accessibilityDialogShown;
 
     // --- Commands ---
     public IRelayCommand QuitCommand { get; }
@@ -70,9 +84,12 @@ public partial class MainWindowViewModel : ObservableObject
     public IRelayCommand OpenLogFolderCommand { get; }
     public IRelayCommand CopyDiagnosticsCommand { get; }
 
-    public MainWindowViewModel(ISettingsService settingsService)
+    private readonly SharpHookProvider? _hookProvider;
+
+    public MainWindowViewModel(ISettingsService settingsService, SharpHookProvider? hookProvider = null)
     {
         _settingsService = settingsService;
+        _hookProvider = hookProvider;
         var s = settingsService.Load();
         _profile = KeyboardProfileRegistry.TryResolve(s.Keyboard, out var p) ? p : new Go60Profile();
         _isAlwaysOnTop = s.AlwaysOnTop;
@@ -253,6 +270,71 @@ public partial class MainWindowViewModel : ObservableObject
 
         for (int i = 0; i < Layers.Count; i++)
             Layers[i].IsSelected = Layers[i].Index == index;
+
+        RebuildZmkLookup(signalByName);
+    }
+
+    /// <summary>
+    /// Rebuilds the "which physical key emits which OS keycode on the
+    /// current layer" map. Covers <c>&amp;kp</c> (modifier wrappers stripped),
+    /// <c>&amp;lt</c>, <c>&amp;HRM_*</c>, and signal macros. The emitted code
+    /// must match the form produced by
+    /// <see cref="SharpHookKeyEventSource"/> — i.e. the raw ZMK keycode
+    /// string, not the display glyph.
+    /// </summary>
+    private void RebuildZmkLookup(Dictionary<string, SignalMacro> signalByName)
+    {
+        _zmkLookup = new Dictionary<string, List<KeyViewModel>>(StringComparer.Ordinal);
+        if (_config is null) return;
+        var layer = _config.Layers[ActiveLayerIndex];
+        for (int i = 0; i < Keys.Count; i++)
+        {
+            var binding = ResolveEffectiveBinding(layer.Index, i);
+            var signal = signalByName.TryGetValue(binding.Behavior, out var s) ? s : null;
+            var code = ExtractEmittedZmkKeycode(binding, signal);
+            if (code is null) continue;
+            if (!_zmkLookup.TryGetValue(code, out var list))
+                _zmkLookup[code] = list = new List<KeyViewModel>();
+            list.Add(Keys[i]);
+        }
+    }
+
+    /// <summary>
+    /// Returns the OS-visible ZMK keycode a binding emits on press, or null
+    /// if the binding does not surface a keycode to the host.
+    /// </summary>
+    private static string? ExtractEmittedZmkKeycode(KeyBinding b, SignalMacro? signal)
+    {
+        if (signal is not null && b.Params.Count > signal.KeyParamIndex)
+            return StripModifierWrappers(b.Params[signal.KeyParamIndex]);
+
+        switch (b.Behavior)
+        {
+            case "&kp" when b.Params.Count >= 1:
+                return StripModifierWrappers(b.Params[0]);
+            case "&lt" when b.Params.Count >= 2:
+                return StripModifierWrappers(b.Params[1]);
+        }
+
+        if (b.Behavior.StartsWith("&HRM_", StringComparison.Ordinal) && b.Params.Count == 2)
+            return StripModifierWrappers(b.Params[1]);
+
+        return null;
+    }
+
+    /// <summary>
+    /// Strips one or more layers of ZMK modifier wrappers (<c>LS(...)</c>,
+    /// <c>LC(...)</c>, <c>LA(...)</c>, <c>LG(...)</c>, R* equivalents) to
+    /// reveal the base keycode. <c>LS(LBKT)</c> → <c>LBKT</c>.
+    /// </summary>
+    private static readonly string[] ModWrappers = { "LS(", "LC(", "LA(", "LG(", "RS(", "RC(", "RA(", "RG(" };
+
+    private static string StripModifierWrappers(string code)
+    {
+        var s = code.Trim();
+        while (s.Length > 4 && s[^1] == ')' && Array.Exists(ModWrappers, w => s.StartsWith(w, StringComparison.Ordinal)))
+            s = s.Substring(3, s.Length - 4).Trim();
+        return s;
     }
 
     /// <summary>
@@ -381,9 +463,12 @@ public partial class MainWindowViewModel : ObservableObject
     private void StartKeyEventTracking()
     {
         if (_keyEventSource is not null) return;
+        if (_hookProvider is null) return;
         try
         {
-            _keyEventSource = new SharpHookKeyEventSource();
+            var source = new SharpHookKeyEventSource(_hookProvider);
+            source.HookFailed += OnHookFailed;
+            _keyEventSource = source;
             _tracker = new HotkeyLayerTracker(_keyEventSource, _signalTable);
             _tracker.LayerChanged += OnLayerChangedFromHook;
             _tracker.KeyObserved += OnKeyObservedFromHook;
@@ -398,6 +483,14 @@ public partial class MainWindowViewModel : ObservableObject
         }
     }
 
+    private void OnHookFailed(Exception ex)
+    {
+        if (!OperatingSystem.IsMacOS()) return;
+        if (_accessibilityDialogShown) return;
+        _accessibilityDialogShown = true;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => ShowAccessibilityPromptRequested?.Invoke());
+    }
+
     private void StopKeyEventTracking()
     {
         if (_tracker is not null)
@@ -407,6 +500,8 @@ public partial class MainWindowViewModel : ObservableObject
             _tracker.Dispose();
             _tracker = null;
         }
+        if (_keyEventSource is SharpHookKeyEventSource sh)
+            sh.HookFailed -= OnHookFailed;
         _keyEventSource?.Dispose();
         _keyEventSource = null;
     }
@@ -419,9 +514,40 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void OnKeyObservedFromHook(KeyEvent ev)
     {
-        // Future: highlight the physical key when pressed. For now we just
-        // keep the event plumbed so we can wire UI feedback without another
-        // service roundtrip.
+        if (ev.Kind != KeyEventKind.Pressed) return;
+        if (!_zmkLookup.TryGetValue(ev.Keycode, out var targets) || targets.Count == 0) return;
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            foreach (var vm in targets)
+                PulseKeyPress(vm);
+        });
+    }
+
+    private void PulseKeyPress(KeyViewModel vm)
+    {
+        if (_pressCts.TryGetValue(vm, out var existing))
+        {
+            existing.Cancel();
+            existing.Dispose();
+        }
+        var cts = new CancellationTokenSource();
+        _pressCts[vm] = cts;
+        vm.IsPressed = true;
+
+        _ = Task.Delay(PressHighlightMs, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (_pressCts.TryGetValue(vm, out var stored) && stored == cts)
+                {
+                    vm.IsPressed = false;
+                    _pressCts.Remove(vm);
+                    cts.Dispose();
+                }
+            });
+        }, TaskScheduler.Default);
     }
 
     private void ResetLayerState()

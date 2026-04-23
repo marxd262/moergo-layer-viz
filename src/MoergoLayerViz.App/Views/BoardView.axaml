@@ -5,6 +5,7 @@
              xmlns:convApp="using:MoergoLayerViz.App.Converters"
              xmlns:i="https://github.com/projektanker/icons.avalonia"
              x:Class="MoergoLayerViz.App.Views.BoardView"
+             x:Name="Board"
              x:DataType="vm:MainWindowViewModel">
 
     <UserControl.Resources>
@@ -13,6 +14,7 @@
         <SolidColorBrush x:Key="KeyStroke" Color="#B0B0B0" />
         <SolidColorBrush x:Key="LayerKeyFill" Color="#1F8B4C" />
         <SolidColorBrush x:Key="UntrackableKeyFill" Color="#E64980" />
+        <SolidColorBrush x:Key="PressHighlight" Color="#FFD60A" />
         <SolidColorBrush x:Key="KeyLabel" Color="#1E1E2E" />
         <SolidColorBrush x:Key="LayerKeyLabel" Color="#F2F2F2" />
     </UserControl.Resources>
@@ -37,6 +39,19 @@
                     <Setter Property="Canvas.Left" Value="{Binding Position.X}" />
                     <Setter Property="Canvas.Top" Value="{Binding Position.Y}" />
                 </Style>
+                <!-- Press-highlight overlay: a thick border in the active-layer
+                     tint pops on for a beat when the hook sees this key fire. -->
+                <Style Selector="Border.pressOverlay">
+                    <Setter Property="Opacity" Value="0" />
+                    <Setter Property="Transitions">
+                        <Transitions>
+                            <DoubleTransition Property="Opacity" Duration="0:0:0.08" />
+                        </Transitions>
+                    </Setter>
+                </Style>
+                <Style Selector="Border.pressOverlay.active">
+                    <Setter Property="Opacity" Value="1" />
+                </Style>
             </ItemsControl.Styles>
             <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:KeyViewModel">
@@ -53,6 +68,17 @@
                                    Stroke="{StaticResource KeyStroke}"
                                    StrokeThickness="1"
                                    Fill="{Binding KeyFillColor, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}" />
+
+                        <!-- Press-highlight overlay: thick saturated-yellow border,
+                             no fill — pulses when the hook sees this key fire.
+                             Color inlined (not StaticResource) because resource
+                             lookup into a DataTemplate scope is unreliable. -->
+                        <Border Classes="pressOverlay"
+                                Classes.active="{Binding IsPressed}"
+                                CornerRadius="6"
+                                BorderThickness="4"
+                                IsHitTestVisible="False"
+                                BorderBrush="#FFD60A" />
 
                         <!-- Untrackable-layer warning: pink border over the base fill -->
                         <Rectangle RadiusX="6" RadiusY="6"

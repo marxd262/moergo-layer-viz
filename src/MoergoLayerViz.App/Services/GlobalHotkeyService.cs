@@ -10,7 +10,13 @@ namespace MoergoLayerViz.App.Services;
 /// </summary>
 public class GlobalHotkeyService : IDisposable
 {
-    private SimpleGlobalHook? _hook;
+    private readonly SharpHookProvider _provider;
+    private bool _started;
+
+    public GlobalHotkeyService(SharpHookProvider provider)
+    {
+        _provider = provider;
+    }
 
     /// <summary>Fired on the hook thread when the hotkey is pressed.</summary>
     public Action? HotkeyPressed { get; set; }
@@ -23,11 +29,10 @@ public class GlobalHotkeyService : IDisposable
 
     public void Start()
     {
-        if (_hook is not null) return;
-
-        _hook = new SimpleGlobalHook();
-        _hook.KeyPressed += OnKeyPressed;
-        _hook.RunAsync();
+        if (_started) return;
+        _started = true;
+        _provider.KeyPressed += OnKeyPressed;
+        _provider.Acquire();
     }
 
     private void OnKeyPressed(object? sender, KeyboardHookEventArgs e)
@@ -48,12 +53,10 @@ public class GlobalHotkeyService : IDisposable
 
     public void Stop()
     {
-        if (_hook is not null)
-        {
-            _hook.KeyPressed -= OnKeyPressed;
-            _hook.Dispose();
-            _hook = null;
-        }
+        if (!_started) return;
+        _started = false;
+        _provider.KeyPressed -= OnKeyPressed;
+        _provider.Release();
     }
 
     /// <summary>Parses a key name (e.g. "F12") to a SharpHook KeyCode.</summary>

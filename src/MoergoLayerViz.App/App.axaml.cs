@@ -56,8 +56,18 @@ public partial class App : Application
             else if (Enum.TryParse<LogLevel>(initialSettings.LogLevel, true, out var logLevel))
                 DiagnosticLog.SetMinimumLevel(logLevel);
 
+            // Shared global-hook owner — libuiohook is a process-global
+            // singleton, so both GlobalHotkeyService and the live key-event
+            // source have to drive the same underlying hook.
+            SharpHookProvider? hookProvider = null;
+            if (!OperatingSystem.IsLinux())
+            {
+                hookProvider = new SharpHookProvider();
+                desktop.Exit += (_, _) => hookProvider.Dispose();
+            }
+
             DiagnosticLog.Info("Startup", "Creating MainWindowViewModel...");
-            var viewModel = new MainWindowViewModel(settingsService);
+            var viewModel = new MainWindowViewModel(settingsService, hookProvider);
             var mainWindow = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = mainWindow;
 
@@ -170,6 +180,15 @@ public partial class App : Application
                     viewModel.LoadLayoutFromPath(file[0].Path.LocalPath);
             };
 
+            viewModel.ShowAccessibilityPromptRequested = () =>
+            {
+                var dialog = new Views.AccessibilityPromptWindow();
+                if (mainWindow.IsVisible)
+                    dialog.ShowDialog(mainWindow);
+                else
+                    dialog.Show();
+            };
+
             viewModel.CopyDiagnosticsRequested = async () =>
             {
                 try
@@ -189,9 +208,9 @@ public partial class App : Application
             };
 
             // Global show/hide hotkey — Linux/Wayland blocks global hooks from unfocused windows.
-            if (!OperatingSystem.IsLinux())
+            if (!OperatingSystem.IsLinux() && hookProvider is not null)
             {
-                _hotkeyService = new GlobalHotkeyService();
+                _hotkeyService = new GlobalHotkeyService(hookProvider);
                 try
                 {
                     _hotkeyService.Key = GlobalHotkeyService.ParseKey(initialSettings.HotkeyKey);

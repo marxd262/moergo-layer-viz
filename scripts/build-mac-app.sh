@@ -1,0 +1,111 @@
+#!/usr/bin/env bash
+# Assemble a minimal MoergoLayerViz.app bundle for local dev on macOS.
+# The purpose is not distribution — it's to give the TCC (Accessibility)
+# prompt a stable bundle identity + display name + usage description, so
+# users see "Moergo Layer Viz" and an explanation instead of "dotnet".
+#
+# Usage:
+#   scripts/build-mac-app.sh            # Release build for host arch
+#   scripts/build-mac-app.sh -c Debug   # Debug publish
+#
+# Output: <repo>/src/MoergoLayerViz.App/bin/macos-bundle/MoergoLayerViz.app
+
+set -euo pipefail
+
+CONFIG=Release
+if [[ "${1:-}" == "-c" && -n "${2:-}" ]]; then
+  CONFIG="$2"
+fi
+
+ARCH=$(uname -m)
+case "$ARCH" in
+  arm64) RID="osx-arm64" ;;
+  x86_64) RID="osx-x64" ;;
+  *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;;
+esac
+
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+PROJECT="$REPO_ROOT/src/MoergoLayerViz.App/MoergoLayerViz.App.csproj"
+PUBLISH_DIR="$REPO_ROOT/src/MoergoLayerViz.App/bin/$CONFIG/net10.0/$RID/publish"
+BUNDLE_ROOT="$REPO_ROOT/src/MoergoLayerViz.App/bin/macos-bundle"
+APP_BUNDLE="$BUNDLE_ROOT/MoergoLayerViz.app"
+INFO_PLIST="$REPO_ROOT/build/macos/Info.plist"
+
+echo "[1/4] Publishing ($CONFIG, $RID, self-contained)..."
+dotnet publish "$PROJECT" \
+  -c "$CONFIG" -r "$RID" --self-contained true \
+  -p:PublishSingleFile=false \
+  --nologo
+
+LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister
+
+echo "[2/5] Unregistering any stale copies from Launch Services ..."
+# A previous bundle at this path (with a different exe name / signature)
+# lingers in LS and confuses TCC. Evict it before re-registering.
+if [[ -d "$APP_BUNDLE" ]]; then
+    "$LSREGISTER" -u "$APP_BUNDLE" 2>/dev/null || true
+fi
+
+echo "[3/5] Assembling bundle at $APP_BUNDLE ..."
+rm -rf "$APP_BUNDLE"
+mkdir -p "$APP_BUNDLE/Contents/MacOS"
+mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+# Copy published output into Contents/MacOS.
+cp -R "$PUBLISH_DIR/." "$APP_BUNDLE/Contents/MacOS/"
+# Rename the .NET apphost from "MoergoLayerViz.App" to "MoergoLayerViz" so
+# the executable name matches standard Mac conventions (no period). The
+# apphost embeds its dll name at build-time and doesn't derive it from the
+# executable filename, so renaming is safe.
+mv "$APP_BUNDLE/Contents/MacOS/MoergoLayerViz.App" "$APP_BUNDLE/Contents/MacOS/MoergoLayerViz"
+cp "$INFO_PLIST" "$APP_BUNDLE/Contents/Info.plist"
+
+# Generate an .icns from the existing PNG so the Accessibility pane shows
+# a proper icon (macOS has been known to fall back to the bundle directory
+# name for entries with no icon).
+ICON_SRC="$REPO_ROOT/src/MoergoLayerViz.App/Assets/icon.png"
+if [[ -f "$ICON_SRC" ]]; then
+    sips -s format icns "$ICON_SRC" --out "$APP_BUNDLE/Contents/Resources/AppIcon.icns" >/dev/null 2>&1 || true
+fi
+
+echo "[4/5] Clearing quarantine + signing ..."
+# Strip quarantine so double-click works without Gatekeeper pestering.
+xattr -cr "$APP_BUNDLE" || true
+
+# Prefer a self-signed Keychain cert named "MoergoLayerViz Local Dev" over
+# ad-hoc. Ad-hoc signatures on modern macOS (26+) don't reliably persist
+# TCC grants — the Accessibility pane shows the bundle directory name and
+# the grant silently fails to apply at runtime. A real cert gives the
+# bundle a stable Authority that TCC treats as a durable identity.
+#
+# Set up (once): Keychain Access → Certificate Assistant → Create a
+# Certificate, name "MoergoLayerViz Local Dev", type Code Signing, self
+# signed root. The cert doesn't need to be in the system trust store;
+# codesign accepts it via its SHA-1 hash even if marked "not trusted".
+#
+# NOTE: Do NOT pass --options runtime — hardened runtime enforces Library
+# Validation, which blocks loading libhostfxr.dylib (different Team IDs).
+SIGN_CERT_HASH=$(security find-certificate -c "MoergoLayerViz Local Dev" -Z 2>/dev/null \
+    | awk '/SHA-1 hash/ {print $NF; exit}')
+if [[ -n "$SIGN_CERT_HASH" ]]; then
+    echo "  Using cert SHA-1: $SIGN_CERT_HASH"
+    codesign --force --deep --sign "$SIGN_CERT_HASH" "$APP_BUNDLE" >/dev/null
+else
+    echo "  No 'MoergoLayerViz Local Dev' cert found — falling back to ad-hoc."
+    echo "  (TCC grants may not persist; see Keychain setup notes above.)"
+    codesign --force --deep --sign - "$APP_BUNDLE" >/dev/null
+fi
+
+echo "[5/5] Registering with Launch Services ..."
+"$LSREGISTER" -f "$APP_BUNDLE"
+
+echo "Done."
+echo ""
+echo "Bundle: $APP_BUNDLE"
+echo "Launch: open \"$APP_BUNDLE\""
+echo ""
+echo "First run will prompt for Accessibility permission — the prompt should"
+echo "now say \"Moergo Layer Viz\" with an explanation. If you previously"
+echo "granted (or denied) permission to a different identity (e.g. 'dotnet'),"
+echo "remove stale entries in System Settings → Privacy & Security →"
+echo "Accessibility before launching."
