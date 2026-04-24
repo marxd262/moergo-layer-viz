@@ -97,4 +97,23 @@ public class MoergoJsonLoaderTests
         for (int i = 0; i < profile.Keys.Count; i++)
             Assert.Equal(i, profile.Keys[i].Index);
     }
+
+    [Fact]
+    public void Glove80Profile_Returns80KeyPositions()
+    {
+        var profile = new Glove80Profile();
+        Assert.Equal(80, profile.Keys.Count);
+        Assert.Equal(80, profile.KeyCount);
+        for (int i = 0; i < profile.Keys.Count; i++)
+            Assert.Equal(i, profile.Keys[i].Index);
+
+        foreach (var k in profile.Keys)
+        {
+            Assert.InRange(k.X, 0, profile.CanvasWidth - k.Width);
+            Assert.InRange(k.Y, 0, profile.CanvasHeight - k.Height);
+        }
+
+        // 6 thumb keys per hand = 12 rotated.
+        Assert.Equal(12, profile.Keys.Count(k => k.RotationDegrees != 0));
+    }
 }
