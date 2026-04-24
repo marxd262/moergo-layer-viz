@@ -92,6 +92,55 @@
                             </Style>
                         </StackPanel.Styles>
 
+                        <!-- Keyboard profile picker — switches the physical layout (GO60 / Glove80). -->
+                        <Button x:Name="KeyboardPickerButton"
+                                Padding="8,4"
+                                ToolTip.Tip="{Binding [Tooltip_Keyboard], Source={StaticResource Loc}}">
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <PathIcon Width="14" Height="14"
+                                          Data="M20 5H4c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z" />
+                                <TextBlock Text="{Binding SelectedKeyboard.DisplayName}"
+                                           VerticalAlignment="Center" />
+                            </StackPanel>
+                            <Button.Flyout>
+                                <Flyout Placement="Bottom">
+                                    <ItemsControl ItemsSource="{Binding AvailableKeyboards}" Padding="2">
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate>
+                                                <Button Command="{Binding DataContext.SelectKeyboardCommand, ElementName=MainWin}"
+                                                        CommandParameter="{Binding}"
+                                                        Padding="10,6"
+                                                        HorizontalAlignment="Stretch"
+                                                        HorizontalContentAlignment="Left"
+                                                        Background="Transparent">
+                                                    <Grid ColumnDefinitions="16,*">
+                                                        <TextBlock Grid.Column="0"
+                                                                   Text="✓"
+                                                                   VerticalAlignment="Center"
+                                                                   FontWeight="Bold">
+                                                            <TextBlock.IsVisible>
+                                                                <MultiBinding Converter="{x:Static conv:EqualityToBoolMultiConverter.Instance}">
+                                                                    <Binding Path="Id" />
+                                                                    <Binding Path="DataContext.SelectedKeyboard.Id" ElementName="MainWin" />
+                                                                </MultiBinding>
+                                                            </TextBlock.IsVisible>
+                                                        </TextBlock>
+                                                        <TextBlock Grid.Column="1"
+                                                                   VerticalAlignment="Center">
+                                                            <Run Text="{Binding DisplayName, Mode=OneWay}" />
+                                                            <Run Text=" — " Foreground="#8A8AA0" />
+                                                            <Run Text="{Binding KeyCount, Mode=OneWay}" Foreground="#8A8AA0" />
+                                                            <Run Text=" keys" Foreground="#8A8AA0" />
+                                                        </TextBlock>
+                                                    </Grid>
+                                                </Button>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+
                         <!-- Live key highlighting (SharpHook-driven pressed-key glow) -->
                         <Button x:Name="LiveButton"
                                 Command="{Binding ToggleLiveHighlightingCommand}"
@@ -169,12 +218,15 @@
                                       Data="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
                         </Button>
                     </StackPanel>
-                    <!-- Fill child: takes remaining space, truncates with ellipsis -->
-                    <TextBlock Text="{Binding StatusMessage}"
-                               Foreground="#CDD6F4"
-                               VerticalAlignment="Center"
+                    <!-- Fill child: takes remaining space, truncates with ellipsis.
+                         Status message + dim keyboard-profile hint appended on the right. -->
+                    <TextBlock VerticalAlignment="Center"
                                MinWidth="20"
-                               TextTrimming="CharacterEllipsis" />
+                               TextTrimming="CharacterEllipsis">
+                        <Run Text="{Binding StatusMessage}" Foreground="#CDD6F4" />
+                        <Run Text="  ·  " Foreground="#6A6A88" />
+                        <Run Text="{Binding KeyboardStatusHint}" Foreground="#8A8AA0" />
+                    </TextBlock>
                 </DockPanel>
             </Border>
 

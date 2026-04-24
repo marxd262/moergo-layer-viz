@@ -76,6 +76,11 @@
   <data name="Status_LoadErrorFormat"><value>Laden mislukt: {0}</value></data>
   <data name="Status_UntrackableLayersFormat"><value>{0} laagwissels kunnen niet gevolgd worden — zet ze om naar signaalmacro's voor automatische laagwissel</value></data>
   <data name="Status_DiagnosticsCopied"><value>Diagnose naar klembord gekopieerd</value></data>
+  <data name="Status_KeyboardSwitched"><value>Toetsenbord gewisseld naar {0}</value></data>
+  <data name="Status_KeyboardSwitchedUnloaded"><value>Toetsenbord gewisseld naar {0} — laad de layout opnieuw</value></data>
+  <data name="Status_KeyboardHintFormat"><value>{0} · {1} toetsen</value></data>
+  <data name="Status_LoadKeyCountMismatch"><value>layout heeft {0} toetsen maar {1} verwacht er {2} — wissel toetsenbord of laad een passende JSON</value></data>
+  <data name="Status_AutoSwitchedKeyboard"><value>automatisch gewisseld naar {0}</value></data>
 
   <data name="LoadDialog_Title"><value>Moergo layout JSON openen</value></data>
   <data name="LoadDialog_FileType"><value>Moergo layout JSON</value></data>

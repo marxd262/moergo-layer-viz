@@ -79,6 +79,22 @@ public partial class MainWindowViewModel : ObservableObject
     public double CanvasWidth => _profile.CanvasWidth;
     public double CanvasHeight => _profile.CanvasHeight;
 
+    /// <summary>All keyboard profiles the user can switch between, for the picker flyout.</summary>
+    public IReadOnlyList<IKeyboardProfile> AvailableKeyboards => KeyboardProfileRegistry.All;
+
+    /// <summary>
+    /// Currently selected profile. Bound to the picker button label and drives
+    /// checkmark selection in the flyout.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(KeyboardStatusHint))]
+    private IKeyboardProfile _selectedKeyboard = null!;
+
+    /// <summary>Right-aligned status-bar hint: "DisplayName · N keys".</summary>
+    public string KeyboardStatusHint =>
+        Loc.Instance.Format("Status_KeyboardHintFormat",
+            SelectedKeyboard?.DisplayName ?? "", SelectedKeyboard?.KeyCount ?? 0);
+
     // --- Callbacks set by App.axaml.cs to bridge to the Window ---
     public Action? QuitRequested { get; set; }
     public Action? ShowWindowRequested { get; set; }
@@ -100,6 +116,7 @@ public partial class MainWindowViewModel : ObservableObject
     public IRelayCommand ResetLayerStateCommand { get; }
     public IRelayCommand OpenLogFolderCommand { get; }
     public IRelayCommand CopyDiagnosticsCommand { get; }
+    public IRelayCommand<IKeyboardProfile> SelectKeyboardCommand { get; }
 
     private readonly SharpHookProvider? _hookProvider;
 
@@ -109,6 +126,7 @@ public partial class MainWindowViewModel : ObservableObject
         _hookProvider = hookProvider;
         var s = settingsService.Load();
         _profile = KeyboardProfileRegistry.TryResolve(s.Keyboard, out var p) ? p : new Go60Profile();
+        _selectedKeyboard = _profile;
         _isAlwaysOnTop = s.AlwaysOnTop;
         _isLiveHighlightingEnabled = s.LiveKeyHighlighting;
         _isAutoLayerSwitchEnabled = s.AutoLayerSwitch;
@@ -157,6 +175,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             if (CopyDiagnosticsRequested is not null) await CopyDiagnosticsRequested();
         });
+        SelectKeyboardCommand = new RelayCommand<IKeyboardProfile>(SelectKeyboard);
 
         BuildKeysFromProfile();
     }
@@ -186,10 +205,32 @@ public partial class MainWindowViewModel : ObservableObject
         try
         {
             var config = MoergoJsonLoader.LoadFromFile(path);
-            if (config.LayerCount > 0 && config.Layers[0].Bindings.Count != _profile.KeyCount)
+            var bindingCount = config.LayerCount > 0 ? config.Layers[0].Bindings.Count : 0;
+            var keyCountMismatch = config.LayerCount > 0 && bindingCount != _profile.KeyCount;
+            IKeyboardProfile? autoSwitchedTo = null;
+            IKeyboardProfile? unmatchedProfile = null;
+            if (keyCountMismatch)
             {
-                DiagnosticLog.Warn("MainVM",
-                    $"Loaded layout has {config.Layers[0].Bindings.Count} keys but profile {_profile.Id} expects {_profile.KeyCount} — visualization will clip/pad to profile");
+                var matching = KeyboardProfileRegistry.All
+                    .FirstOrDefault(p => p.KeyCount == bindingCount);
+                if (matching is not null)
+                {
+                    unmatchedProfile = _profile;
+                    _profile = matching;
+                    SelectedKeyboard = matching;
+                    BuildKeysFromProfile();
+                    OnPropertyChanged(nameof(CanvasWidth));
+                    OnPropertyChanged(nameof(CanvasHeight));
+                    PersistSetting(s => s with { Keyboard = matching.Id });
+                    autoSwitchedTo = matching;
+                    DiagnosticLog.Info("MainVM",
+                        $"Auto-switched profile to {matching.Id} ({bindingCount} keys) on load");
+                }
+                else
+                {
+                    DiagnosticLog.Warn("MainVM",
+                        $"Loaded layout has {bindingCount} keys but no profile matches; staying on {_profile.Id}");
+                }
             }
 
             _config = config;
@@ -208,6 +249,16 @@ public partial class MainWindowViewModel : ObservableObject
 
             var baseMsg = Loc.Instance.Format("Status_Loaded",
                 Path.GetFileName(path), config.LayerCount);
+            if (autoSwitchedTo is not null)
+            {
+                baseMsg += " — " + Loc.Instance.Format("Status_AutoSwitchedKeyboard",
+                    autoSwitchedTo.DisplayName);
+            }
+            else if (keyCountMismatch)
+            {
+                baseMsg += " — " + Loc.Instance.Format("Status_LoadKeyCountMismatch",
+                    bindingCount, _profile.DisplayName, _profile.KeyCount);
+            }
             if (_untrackable.Count > 0)
             {
                 baseMsg += " — " + Loc.Instance.Format("Status_UntrackableLayersFormat", _untrackable.Count);
@@ -236,6 +287,48 @@ public partial class MainWindowViewModel : ObservableObject
         Keys.Clear();
         foreach (var pos in _profile.Keys)
             Keys.Add(new KeyViewModel(pos));
+    }
+
+    private void SelectKeyboard(IKeyboardProfile? profile)
+    {
+        if (profile is null) return;
+        if (string.Equals(profile.Id, _profile.Id, StringComparison.OrdinalIgnoreCase)) return;
+
+        _profile = profile;
+        SelectedKeyboard = profile;
+        BuildKeysFromProfile();
+        OnPropertyChanged(nameof(CanvasWidth));
+        OnPropertyChanged(nameof(CanvasHeight));
+
+        var layoutFits = _config is not null
+            && _config.LayerCount > 0
+            && _config.Layers[0].Bindings.Count == profile.KeyCount;
+
+        if (_config is not null && !layoutFits)
+        {
+            _config = null;
+            _signalMacros = Array.Empty<SignalMacro>();
+            _signalTable = new LayerSignalTable(new Dictionary<string, SignalKeyMapping>());
+            _untrackable = Array.Empty<UntrackableLayerSwitch>();
+            _layerPredecessors = new Dictionary<int, HashSet<int>>();
+            _tracker?.UpdateTable(_signalTable);
+            Layers.Clear();
+            ActiveLayerIndex = 0;
+            HasLayoutLoaded = false;
+            StatusMessage = Loc.Instance.Format("Status_KeyboardSwitchedUnloaded", profile.DisplayName);
+        }
+        else if (_config is not null)
+        {
+            ApplyActiveLayer(ActiveLayerIndex);
+            StatusMessage = Loc.Instance.Format("Status_KeyboardSwitched", profile.DisplayName);
+        }
+        else
+        {
+            StatusMessage = Loc.Instance.Format("Status_KeyboardSwitched", profile.DisplayName);
+        }
+
+        PersistSetting(s => s with { Keyboard = profile.Id });
+        DiagnosticLog.Info("MainVM", $"Keyboard profile switched to {profile.Id}");
     }
 
     private void RebuildLayers()
