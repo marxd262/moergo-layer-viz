@@ -10,17 +10,79 @@ namespace MoergoLayerViz.Core.Keymap;
 /// in firmware and never reach the host.
 /// </summary>
 /// <param name="MacroName">Behavior name including '&amp;' (e.g. "&amp;test").</param>
-/// <param name="LayerParamIndex">Which macro parameter position carries the layer number.</param>
-/// <param name="KeyParamIndex">Which macro parameter position carries the signal keycode.</param>
+/// <param name="LayerParamIndex">
+/// Which macro parameter position carries the layer number, or null when the
+/// macro hard-codes the layer as a literal (see <see cref="LiteralLayerIndex"/>).
+/// </param>
+/// <param name="KeyParamIndex">
+/// Which macro parameter position carries the signal keycode, or null when the
+/// macro hard-codes the keycode as a literal (see <see cref="LiteralKeycode"/>).
+/// </param>
 /// <param name="IsMomentary">
 /// True when the macro uses <c>&amp;macro_pause_for_release</c> — the layer is
 /// held only while the key is physically down.
 /// </param>
+/// <param name="LiteralLayerIndex">
+/// Layer index baked into the macro body (no <c>&amp;macro_param_*</c> route).
+/// Used when the macro takes no parameters and embeds <c>&amp;mo &lt;n&gt;</c>
+/// directly.
+/// </param>
+/// <param name="LiteralKeycode">
+/// Signal keycode baked into the macro body (no <c>&amp;macro_param_*</c>
+/// route). Used when the macro embeds <c>&amp;kp &lt;CODE&gt;</c> directly.
+/// </param>
 public sealed record SignalMacro(
     string MacroName,
-    int LayerParamIndex,
-    int KeyParamIndex,
-    bool IsMomentary);
+    int? LayerParamIndex,
+    int? KeyParamIndex,
+    bool IsMomentary,
+    int? LiteralLayerIndex = null,
+    string? LiteralKeycode = null)
+{
+    /// <summary>
+    /// Resolves the layer this signal macro activates, given the layer-keymap
+    /// binding that references it. Tries the routed param first, then falls
+    /// back to <see cref="LiteralLayerIndex"/>. Returns false if neither
+    /// resolves to a valid integer.
+    /// </summary>
+    public bool TryResolveTargetLayer(KeyBinding binding, out int layer)
+    {
+        if (LayerParamIndex is int idx
+            && binding.Params.Count > idx
+            && int.TryParse(binding.Params[idx], out layer))
+            return true;
+        if (LiteralLayerIndex is int lit)
+        {
+            layer = lit;
+            return true;
+        }
+        layer = -1;
+        return false;
+    }
+
+    /// <summary>
+    /// Resolves the OS-visible signal keycode this macro emits, given the
+    /// layer-keymap binding that references it. Tries the routed param first,
+    /// then falls back to <see cref="LiteralKeycode"/>.
+    /// </summary>
+    public bool TryResolveSignalKeycode(KeyBinding binding, out string keycode)
+    {
+        if (KeyParamIndex is int idx
+            && binding.Params.Count > idx
+            && !string.IsNullOrWhiteSpace(binding.Params[idx]))
+        {
+            keycode = binding.Params[idx];
+            return true;
+        }
+        if (!string.IsNullOrWhiteSpace(LiteralKeycode))
+        {
+            keycode = LiteralKeycode!;
+            return true;
+        }
+        keycode = "";
+        return false;
+    }
+}
 
 /// <summary>
 /// A layer-switch binding found in the loaded keymap that the viewer cannot
@@ -66,9 +128,20 @@ public static class SignalMacroScanner
     };
 
     /// <summary>
-    /// Identifies every macro in <paramref name="config"/> that is structured
-    /// like <c>&amp;macro_press → &amp;mo (routed param) → &amp;kp (routed param)
-    /// → &amp;macro_pause_for_release → &amp;macro_release</c>.
+    /// Identifies every macro that activates a layer and emits a host-visible
+    /// keycode in the same phase. Two recognized shapes:
+    /// <list type="bullet">
+    /// <item><c>&amp;macro_press → &amp;mo / &amp;to / … → &amp;kp →
+    ///   [&amp;macro_pause_for_release] → &amp;macro_release</c> — held-style.
+    ///   <c>&amp;macro_pause_for_release</c> marks the macro as momentary
+    ///   (the layer is active only while the key is physically down).</item>
+    /// <item><c>&amp;macro_tap → &amp;to / &amp;tog / … → &amp;kp</c> —
+    ///   fire-once. Useful for non-momentary <c>&amp;to</c>/<c>&amp;tog</c>
+    ///   signal macros where the F-key fires as a clean tap and the tracker
+    ///   only acts on press.</item>
+    /// </list>
+    /// Layer/keycode params can come from <c>&amp;macro_param_*</c> routes
+    /// or be hard-coded literals; both are captured.
     /// </summary>
     public static IReadOnlyList<SignalMacro> DetectSignalMacros(KeyboardConfig config)
     {
@@ -78,7 +151,12 @@ public static class SignalMacroScanner
             if (TryClassifyMacro(macro, out var signal))
             {
                 DiagnosticLog.Info("SignalMacroScanner",
-                    $"Detected signal macro '{signal.MacroName}' layerParam={signal.LayerParamIndex} keyParam={signal.KeyParamIndex} momentary={signal.IsMomentary}");
+                    $"Detected signal macro '{signal.MacroName}' " +
+                    $"layerParam={signal.LayerParamIndex?.ToString() ?? "-"} " +
+                    $"keyParam={signal.KeyParamIndex?.ToString() ?? "-"} " +
+                    $"literalLayer={signal.LiteralLayerIndex?.ToString() ?? "-"} " +
+                    $"literalKey={signal.LiteralKeycode ?? "-"} " +
+                    $"momentary={signal.IsMomentary}");
                 found.Add(signal);
             }
         }
@@ -88,13 +166,17 @@ public static class SignalMacroScanner
     /// <summary>
     /// Walks every layer binding and returns the ones that activate layers
     /// via bare ZMK behaviors (no signal kp), which means the viewer can't
-    /// follow them. UI surfaces this list as a user-facing warning.
+    /// follow them. Hold-taps wrapping a signal macro on their hold side are
+    /// considered trackable and excluded; hold-taps wrapping a bare layer
+    /// behavior are flagged just like a direct bare reference. UI surfaces
+    /// this list as a user-facing warning.
     /// </summary>
     public static IReadOnlyList<UntrackableLayerSwitch> FindUntrackableLayerSwitches(
         KeyboardConfig config,
         IReadOnlyCollection<SignalMacro> signalMacros)
     {
         var signalNames = new HashSet<string>(signalMacros.Select(s => s.MacroName), StringComparer.Ordinal);
+        var holdTapsByName = config.HoldTaps.ToDictionary(h => h.Name, StringComparer.Ordinal);
         var hits = new List<UntrackableLayerSwitch>();
 
         foreach (var layer in config.Layers)
@@ -102,17 +184,52 @@ public static class SignalMacroScanner
             for (int i = 0; i < layer.Bindings.Count; i++)
             {
                 var b = layer.Bindings[i];
-                if (!BareLayerBehaviors.Contains(b.Behavior)) continue;
-                if (signalNames.Contains(b.Behavior)) continue; // (shouldn't happen — signal macros don't start with & bare behaviors)
+                var (untrackableBehavior, sourceParams) = ClassifyForUntrackability(
+                    b, signalNames, holdTapsByName);
+                if (untrackableBehavior is null) continue;
 
                 int? target = null;
-                if (b.Params.Count > 0 && int.TryParse(b.Params[0], out var t))
+                if (sourceParams.Count > 0 && int.TryParse(sourceParams[0], out var t))
                     target = t;
 
-                hits.Add(new UntrackableLayerSwitch(layer.Index, i, b.Behavior, target));
+                hits.Add(new UntrackableLayerSwitch(layer.Index, i, untrackableBehavior, target));
             }
         }
         return hits;
+    }
+
+    /// <summary>
+    /// If the binding (or, for hold-taps, its hold side) activates a layer
+    /// via a bare untrackable behavior, returns the offending behavior name
+    /// and the params to read its target layer from. Returns (null, …) when
+    /// the binding is trackable or unrelated to layer switching.
+    /// </summary>
+    private static (string? Behavior, IReadOnlyList<string> Params) ClassifyForUntrackability(
+        KeyBinding b,
+        HashSet<string> signalNames,
+        Dictionary<string, HoldTap> holdTapsByName)
+    {
+        if (BareLayerBehaviors.Contains(b.Behavior))
+        {
+            // (shouldn't happen — signal macros don't start with bare behaviors,
+            // but kept for parity with the original guard.)
+            if (signalNames.Contains(b.Behavior)) return (null, Array.Empty<string>());
+            return (b.Behavior, b.Params);
+        }
+
+        if (holdTapsByName.TryGetValue(b.Behavior, out var ht))
+        {
+            // Hold-tap wrapping a signal macro is trackable.
+            if (signalNames.Contains(ht.HoldBinding)) return (null, Array.Empty<string>());
+            // Hold-tap wrapping a bare layer behavior is just as untrackable
+            // as a direct reference would be. The hold-tap binding's first
+            // param is the hold-side param (in Moergo's distributed-param
+            // shape), so it's still the layer index.
+            if (BareLayerBehaviors.Contains(ht.HoldBinding))
+                return (ht.HoldBinding, b.Params);
+        }
+
+        return (null, Array.Empty<string>());
     }
 
     private static bool TryClassifyMacro(MoergoMacro macro, out SignalMacro signal)
@@ -121,20 +238,24 @@ public static class SignalMacroScanner
         var b = macro.Bindings;
         if (b.Count == 0) return false;
 
-        // Must contain &macro_press, an &mo (or similar layer-switch), and an &kp.
-        int pressIdx = IndexOf(b, "&macro_press");
-        if (pressIdx < 0) return false;
+        // Must start with a phase marker — &macro_press for hold-style macros
+        // (with or without &macro_pause_for_release), or &macro_tap for
+        // fire-once macros that emit a clean press+release of the signal kp.
+        int startIdx = FirstIndexOfAny(b, 0, "&macro_press", "&macro_tap");
+        if (startIdx < 0) return false;
 
-        // We only parse the "press phase" — bindings between &macro_press
-        // and (&macro_pause_for_release | &macro_release | end-of-list).
-        int endIdx = FirstIndexOfAny(b, pressIdx + 1, "&macro_pause_for_release", "&macro_release");
+        // Scan only this phase — bindings until the next phase marker or end.
+        int endIdx = FirstIndexOfAny(b, startIdx + 1,
+            "&macro_pause_for_release", "&macro_release", "&macro_press", "&macro_tap");
         if (endIdx < 0) endIdx = b.Count;
 
         int? layerParam = null;
         int? keyParam = null;
+        int? literalLayer = null;
+        string? literalKeycode = null;
         string? pendingRoute = null;
 
-        for (int i = pressIdx + 1; i < endIdx; i++)
+        for (int i = startIdx + 1; i < endIdx; i++)
         {
             var binding = b[i];
 
@@ -146,20 +267,39 @@ public static class SignalMacroScanner
                 continue;
             }
 
-            // A &mo (or &to, &tog, &lt, etc.) under a pending route => captures the layer param.
-            if (BareLayerBehaviors.Contains(binding.Behavior) && pendingRoute is not null)
+            // A &mo (or &to, &tog, &lt, etc.): if a route is pending, it captures
+            // a parameter slot; otherwise the macro is hard-coding the layer index
+            // as a literal in its first param.
+            if (BareLayerBehaviors.Contains(binding.Behavior))
             {
-                var paramIdx = ExtractFromParam(pendingRoute);
-                if (paramIdx is int li) layerParam ??= li;
+                if (pendingRoute is not null)
+                {
+                    var paramIdx = ExtractFromParam(pendingRoute);
+                    if (paramIdx is int li) layerParam ??= li;
+                }
+                else if (binding.Params.Count > 0
+                    && int.TryParse(binding.Params[0], out var litLayer))
+                {
+                    literalLayer ??= litLayer;
+                }
                 pendingRoute = null;
                 continue;
             }
 
-            // A &kp under a pending route => captures the signal-key param.
-            if (binding.Behavior == "&kp" && pendingRoute is not null)
+            // A &kp: routed → captures the signal-key param slot; literal → captures
+            // the embedded keycode directly.
+            if (binding.Behavior == "&kp")
             {
-                var paramIdx = ExtractFromParam(pendingRoute);
-                if (paramIdx is int ki) keyParam ??= ki;
+                if (pendingRoute is not null)
+                {
+                    var paramIdx = ExtractFromParam(pendingRoute);
+                    if (paramIdx is int ki) keyParam ??= ki;
+                }
+                else if (binding.Params.Count > 0
+                    && !string.IsNullOrWhiteSpace(binding.Params[0]))
+                {
+                    literalKeycode ??= binding.Params[0];
+                }
                 pendingRoute = null;
                 continue;
             }
@@ -168,10 +308,18 @@ public static class SignalMacroScanner
             pendingRoute = null;
         }
 
-        if (layerParam is null || keyParam is null) return false;
+        bool hasLayer = layerParam is not null || literalLayer is not null;
+        bool hasKey = keyParam is not null || literalKeycode is not null;
+        if (!hasLayer || !hasKey) return false;
 
         bool momentary = IndexOf(b, "&macro_pause_for_release") >= 0;
-        signal = new SignalMacro(macro.Name, layerParam.Value, keyParam.Value, momentary);
+        signal = new SignalMacro(
+            macro.Name,
+            layerParam,
+            keyParam,
+            momentary,
+            literalLayer,
+            literalKeycode);
         return true;
     }
 

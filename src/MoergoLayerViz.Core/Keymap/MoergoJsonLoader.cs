@@ -56,11 +56,17 @@ public static class MoergoJsonLoader
         }
 
         var macros = (doc.Macros ?? new()).Select(ToMacro).ToList();
+        var macroArity = macros.ToDictionary(m => m.Name, m => m.Params.Count, StringComparer.Ordinal);
+        var holdTaps = (doc.HoldTaps ?? new())
+            .Select(ht => ToHoldTap(ht, macroArity))
+            .Where(ht => ht is not null)
+            .Select(ht => ht!)
+            .ToList();
 
         DiagnosticLog.Info("JsonLoader",
-            $"Loaded keyboard='{doc.Keyboard}' layers={layers.Count} macros={macros.Count}");
+            $"Loaded keyboard='{doc.Keyboard}' layers={layers.Count} macros={macros.Count} holdTaps={holdTaps.Count}");
 
-        return new KeyboardConfig(doc.Keyboard, layers, macros);
+        return new KeyboardConfig(doc.Keyboard, layers, macros, holdTaps);
     }
 
     // ---- Conversion helpers ----
@@ -82,6 +88,55 @@ public static class MoergoJsonLoader
     {
         var bindings = (src.Bindings ?? new()).Select(ToBinding).ToList();
         return new MoergoMacro(src.Name, src.Params ?? new(), bindings);
+    }
+
+    /// <summary>
+    /// Converts a wire-level hold-tap into the public model. Skips entries
+    /// that don't have at least two bindings — those are malformed for our
+    /// purposes (we need both hold and tap sides). Each side's arity (how
+    /// many keymap params it consumes) is computed by looking up the
+    /// referenced behavior against the built-in arity table or the macro
+    /// dictionary; unknown behaviors default to 0.
+    /// </summary>
+    private static HoldTap? ToHoldTap(MoergoHoldTapDefinition src, IReadOnlyDictionary<string, int> macroArity)
+    {
+        var bindings = src.Bindings;
+        if (bindings is null || bindings.Count < 2) return null;
+        if (string.IsNullOrWhiteSpace(src.Name)) return null;
+        return new HoldTap(
+            src.Name,
+            bindings[0],
+            bindings[1],
+            ResolveBehaviorArity(bindings[0], macroArity),
+            ResolveBehaviorArity(bindings[1], macroArity));
+    }
+
+    /// <summary>
+    /// Returns how many params the named behavior consumes when invoked. Hard-codes
+    /// the standard ZMK behaviors that turn up on hold-tap sides; falls back to
+    /// the user macro dictionary; defaults to 0 for anything unknown (which is
+    /// the safest choice — it routes all keymap params to the other side rather
+    /// than dropping them).
+    /// </summary>
+    private static int ResolveBehaviorArity(string behavior, IReadOnlyDictionary<string, int> macroArity)
+    {
+        switch (behavior)
+        {
+            case "&kp":
+            case "&mo":
+            case "&to":
+            case "&tog":
+            case "&sl":
+                return 1;
+            case "&lt":
+                return 2;
+            case "&trans":
+            case "&none":
+            case "&bootloader":
+            case "&sys_reset":
+                return 0;
+        }
+        return macroArity.TryGetValue(behavior, out var n) ? n : 0;
     }
 
     /// <summary>

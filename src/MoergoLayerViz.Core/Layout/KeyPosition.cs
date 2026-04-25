@@ -13,13 +13,19 @@ namespace MoergoLayerViz.Core.Layout;
 /// <param name="Width">Rectangle width. Defaults to <see cref="StandardKeySize"/>.</param>
 /// <param name="Height">Rectangle height. Defaults to <see cref="StandardKeySize"/>.</param>
 /// <param name="RotationDegrees">Rotation around the key's centre.</param>
+/// <param name="Description">
+/// Optional human-readable physical position label (e.g. "Row 2, L col 4",
+/// "Left thumb 1") used for tooltips. Profiles populate this; null is fine
+/// and callers fall back to the index.
+/// </param>
 public sealed record KeyPosition(
     int Index,
     double X,
     double Y,
     double Width = KeyPosition.StandardKeySize,
     double Height = KeyPosition.StandardKeySize,
-    double RotationDegrees = 0)
+    double RotationDegrees = 0,
+    string? Description = null)
 {
     public const double StandardKeySize = 60;
 }

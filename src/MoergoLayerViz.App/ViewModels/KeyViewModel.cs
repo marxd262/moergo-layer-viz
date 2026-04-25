@@ -56,6 +56,7 @@ public partial class KeyViewModel : ObservableObject
     [ObservableProperty] private bool _isLayerSignalKey;
     [ObservableProperty] private bool _isPressed;
     [ObservableProperty] private bool _isUntrackableLayerSwitch;
+    [ObservableProperty] private string _tooltip = "";
 
     /// <summary>
     /// Auto-scales the label font to the label length so single glyphs read
@@ -97,13 +98,14 @@ public partial class KeyViewModel : ObservableObject
     /// Pushes a new binding from the active layer into this view model.
     /// Driven by <see cref="MainWindowViewModel"/> on layer change.
     /// </summary>
-    public void ApplyBinding(KeyBinding binding, bool isSignalMacro, bool isUntrackable, int? targetLayer, string? targetLayerName)
+    public void ApplyBinding(KeyBinding binding, bool isSignalMacro, bool isUntrackable, int? targetLayer, string? targetLayerName, HoldTap? holdTap = null, SignalMacro? signal = null)
     {
         Behavior = binding.Behavior;
         IsLayerSignalKey = isSignalMacro;
         IsUntrackableLayerSwitch = isUntrackable;
         KeyFillColor = ResolveFillColor(binding, targetLayer);
         IconName = NormalizeIconName(binding.DecorationIcon);
+        Tooltip = BuildTooltip(binding, targetLayerName, holdTap, signal);
 
         // decoration.icon acts as flair above the label — if a decoration.label
         // is also set, it still drives the main label. Derived label/subscript
@@ -116,10 +118,100 @@ public partial class KeyViewModel : ObservableObject
             return;
         }
 
-        var (label, sub, topLeft) = FormatBinding(binding, targetLayerName);
+        var (label, sub, topLeft) = FormatBinding(binding, targetLayerName, holdTap);
         Label = label;
         Subscript = sub;
         TopLeftLabel = topLeft;
+    }
+
+    /// <summary>
+    /// Multi-line tooltip dump of every piece of data we have for this key,
+    /// minus the decoration icon (already rendered visually). Format:
+    /// <list type="bullet">
+    /// <item>line 1: raw binding (<c>&amp;kp LS(LBKT)</c>, <c>&amp;ht_symbol RET</c>, …)</item>
+    /// <item>category section: hold-tap / layer-switch / signal-macro detail with target layer</item>
+    /// <item>decoration section: user-authored label and background hex if present</item>
+    /// </list>
+    /// </summary>
+    private string BuildTooltip(KeyBinding b, string? targetLayerName, HoldTap? holdTap, SignalMacro? signal)
+    {
+        var posLine = Position.Description is { } desc
+            ? $"{desc}  (idx {Position.Index})"
+            : $"idx {Position.Index}";
+        var lines = new List<string> { posLine, "", b.Display };
+
+        string? signalKeycode = null;
+        if (signal is not null && signal.TryResolveSignalKeycode(b, out var kc))
+            signalKeycode = kc;
+
+        var layerLabel = targetLayerName ?? "?";
+
+        if (holdTap is not null)
+        {
+            var (holdParams, tapParams) = SplitHoldTapParams(b.Params, holdTap);
+            lines.Add("");
+            var heading = targetLayerName is null ? "Hold-Tap" : $"Hold-Tap → {targetLayerName}";
+            lines.Add(heading);
+            var sigSuffix = signalKeycode is null ? "" : $" (signals {signalKeycode})";
+            var holdTail = holdParams.Count > 0 ? " " + string.Join(' ', holdParams) : "";
+            var tapTail = tapParams.Count > 0 ? " " + string.Join(' ', tapParams) : "";
+            lines.Add($"  Hold: {holdTap.HoldBinding}{holdTail}{sigSuffix}");
+            lines.Add($"  Tap:  {holdTap.TapBinding}{tapTail}");
+        }
+        else if (signal is not null)
+        {
+            lines.Add("");
+            var line = $"Signal macro → {layerLabel}";
+            if (signalKeycode is not null) line += $" (signals {signalKeycode})";
+            lines.Add(line);
+        }
+        else
+        {
+            string? category = b.Behavior switch
+            {
+                "&lt"  when b.Params.Count == 2 => "Layer Tap",
+                "&mo"  when b.Params.Count >= 1 => "Momentary",
+                "&to"  when b.Params.Count >= 1 => "To Layer",
+                "&tog" when b.Params.Count >= 1 => "Toggle Layer",
+                "&sl"  when b.Params.Count >= 1 => "Sticky Layer",
+                _ => null,
+            };
+            if (category is not null)
+            {
+                lines.Add("");
+                lines.Add($"{category} → {layerLabel}");
+            }
+        }
+
+        var hasDecoration = !string.IsNullOrEmpty(b.DecorationLabel) || !string.IsNullOrEmpty(b.DecorationBackground);
+        if (hasDecoration)
+        {
+            lines.Add("");
+            if (!string.IsNullOrEmpty(b.DecorationLabel))
+                lines.Add($"Label: {b.DecorationLabel}");
+            if (!string.IsNullOrEmpty(b.DecorationBackground))
+                lines.Add($"Background: {b.DecorationBackground}");
+        }
+
+        return string.Join('\n', lines);
+    }
+
+    /// <summary>
+    /// Splits the keymap-binding params between the hold and tap sides of a
+    /// hold-tap, using each side's declared arity. The hold side consumes the
+    /// leading params, the tap side the trailing ones — matching ZMK's order.
+    /// If the keymap supplied fewer params than expected (e.g. a malformed
+    /// entry), missing params are silently truncated.
+    /// </summary>
+    private static (IReadOnlyList<string> Hold, IReadOnlyList<string> Tap) SplitHoldTapParams(IReadOnlyList<string> all, HoldTap ht)
+    {
+        var holdCount = Math.Min(ht.HoldArity, all.Count);
+        var tapCount = Math.Min(ht.TapArity, Math.Max(0, all.Count - holdCount));
+        var hold = new string[holdCount];
+        var tap = new string[tapCount];
+        for (int i = 0; i < holdCount; i++) hold[i] = all[i];
+        for (int i = 0; i < tapCount; i++) tap[i] = all[holdCount + i];
+        return (hold, tap);
     }
 
     /// <summary>
@@ -139,11 +231,28 @@ public partial class KeyViewModel : ObservableObject
         return DefaultKeyFill;
     }
 
-    private static (string Label, string Subscript, string TopLeft) FormatBinding(KeyBinding b, string? targetLayerName)
+    private static (string Label, string Subscript, string TopLeft) FormatBinding(KeyBinding b, string? targetLayerName, HoldTap? holdTap = null)
     {
         // User-authored decoration.label from the Moergo editor wins outright.
         if (!string.IsNullOrEmpty(b.DecorationLabel))
             return (b.DecorationLabel, "", "");
+
+        // Hold-tap: split the keymap params between hold and tap sides
+        // according to each side's declared arity, render the tap-side as the
+        // main label, and surface the hold-side as the subscript (preferring
+        // the target layer name when the hold side activates a layer, falling
+        // back to the hold-side's own rendered label — e.g. "⌥" for an
+        // &kp LALT hold on a homerow-mod).
+        if (holdTap is not null)
+        {
+            var (holdParams, tapParams) = SplitHoldTapParams(b.Params, holdTap);
+            var tap = new KeyBinding(holdTap.TapBinding, tapParams);
+            var hold = new KeyBinding(holdTap.HoldBinding, holdParams);
+            var (tapLabel, _, _) = FormatBinding(tap, null, null);
+            var (holdLabel, _, _) = FormatBinding(hold, targetLayerName, null);
+            var sub = !string.IsNullOrEmpty(targetLayerName) ? targetLayerName : holdLabel;
+            return (tapLabel, sub, "Hold-Tap");
+        }
 
         switch (b.Behavior)
         {

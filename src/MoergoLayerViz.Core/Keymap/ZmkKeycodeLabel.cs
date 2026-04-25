@@ -54,6 +54,7 @@ public static class ZmkKeycodeLabel
         ["BSPC"] = "⌫",      ["BACKSPACE"] = "⌫",
         ["DEL"] = "⌦",       ["DELETE"] = "⌦",
         ["RET"] = "⏎",       ["ENTER"] = "⏎",             ["RETURN"] = "⏎",
+        ["TAB"] = "⇥",
 
         // Numpad-specific long forms (base names — a `KP_` prefix is stripped
         // in Display() before lookup, so `KP_DIVIDE` resolves to `/` via these).

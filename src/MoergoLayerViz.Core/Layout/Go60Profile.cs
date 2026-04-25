@@ -23,10 +23,10 @@ public sealed class Go60Profile : IKeyboardProfile
     public string DisplayName => "Moergo GO60";
     public int KeyCount => 60;
     // Canvas tightened so horizontal margin is half a key-width (30) on both
-    // sides: leftmost key sits at x=30, rightmost at x=1170 (spans to 1230),
-    // giving a total width of 1260. Vertical margin is one full key-height (60):
+    // sides: leftmost key sits at x=30, rightmost at x=1110 (spans to 1170),
+    // giving a total width of 1200. Vertical margin is one full key-height (60):
     // topmost key at y=60, bottommost at y=384 (spans to 444), canvas height 504.
-    public double CanvasWidth => 1260;
+    public double CanvasWidth => 1200;
     public double CanvasHeight => 504;
 
     public IReadOnlyList<KeyPosition> Keys { get; } = BuildKeys();
@@ -51,18 +51,23 @@ public sealed class Go60Profile : IKeyboardProfile
         // Right-hand columns, outer-to-inner to mirror `leftCols`. When
         // iterating a row left-to-right across the full keyboard we walk
         // `leftCols` forward then `rightCols` in reverse, so the innermost
-        // right column (x=850) comes first on the right side.
+        // right column (x=790) comes first on the right side.
         (double X, double Top, bool HasRow5)[] rightCols =
         {
-            (1170, 94, false), // outer pinky
-            (1106, 90, false), // pinky
-            (1042, 60, true ), // ring
-            ( 978, 60, true ), // middle
-            ( 914, 60, true ), // index
-            ( 850, 60, false), // inner index
+            (1110, 94, false), // outer pinky
+            (1046, 90, false), // pinky
+            ( 982, 60, true ), // ring
+            ( 918, 60, true ), // middle
+            ( 854, 60, true ), // index
+            ( 790, 60, false), // inner index
         };
 
         const double RowPitch = 64;
+
+        // Per-column finger names used in tooltips. Aligned with leftCols /
+        // rightCols (outer-to-inner). Col numbering across the profile:
+        // 1 = outer pinky, 6 = inner index — same on both hands.
+        string[] fingerByCol = { "outer pinky", "pinky", "ring", "middle", "index", "inner index" };
 
         var list = new List<KeyPosition>(60);
         int idx = 0;
@@ -70,30 +75,42 @@ public sealed class Go60Profile : IKeyboardProfile
         // Rows 1-4 (indices 0-47): 12 keys each, six per hand.
         for (int row = 0; row < 4; row++)
         {
-            foreach (var c in leftCols)                       // left: outer → inner
-                list.Add(new KeyPosition(idx++, c.X, c.Top + row * RowPitch));
+            for (int c = 0; c < leftCols.Length; c++)         // left: outer → inner
+            {
+                var col = c + 1;
+                list.Add(new KeyPosition(idx++, leftCols[c].X, leftCols[c].Top + row * RowPitch,
+                    Description: $"Row {row + 1}, L col {col} ({fingerByCol[c]})"));
+            }
             for (int i = rightCols.Length - 1; i >= 0; i--)   // right: inner → outer
-                list.Add(new KeyPosition(idx++, rightCols[i].X, rightCols[i].Top + row * RowPitch));
+            {
+                var col = i + 1; // mirrored: i=5 (inner index) → col 6, i=0 (outer pinky) → col 1
+                list.Add(new KeyPosition(idx++, rightCols[i].X, rightCols[i].Top + row * RowPitch,
+                    Description: $"Row {row + 1}, R col {col} ({fingerByCol[i]})"));
+            }
         }
 
         // Row 5 (indices 48-53): only the three middle columns per hand have
         // a 5th key, sitting just inboard of the thumb cluster.
-        foreach (var c in leftCols)
-            if (c.HasRow5) list.Add(new KeyPosition(idx++, c.X, c.Top + 4 * RowPitch));
+        for (int c = 0; c < leftCols.Length; c++)
+            if (leftCols[c].HasRow5)
+                list.Add(new KeyPosition(idx++, leftCols[c].X, leftCols[c].Top + 4 * RowPitch,
+                    Description: $"Row 5, L col {c + 1} ({fingerByCol[c]})"));
         for (int i = rightCols.Length - 1; i >= 0; i--)
-            if (rightCols[i].HasRow5) list.Add(new KeyPosition(idx++, rightCols[i].X, rightCols[i].Top + 4 * RowPitch));
+            if (rightCols[i].HasRow5)
+                list.Add(new KeyPosition(idx++, rightCols[i].X, rightCols[i].Top + 4 * RowPitch,
+                    Description: $"Row 5, R col {i + 1} ({fingerByCol[i]})"));
 
         // Left thumb cluster (54-56): outer → inner. Rotations fan the keys
         // toward the thumb's natural arc; coords match the xaml.io sketch.
-        list.Add(new KeyPosition(idx++, 360, 320, RotationDegrees: 10));
-        list.Add(new KeyPosition(idx++, 437, 338, RotationDegrees: 22));
-        list.Add(new KeyPosition(idx++, 509, 370, RotationDegrees: 34));
+        list.Add(new KeyPosition(idx++, 360, 320, RotationDegrees: 10, Description: "Left thumb 1 (outer)"));
+        list.Add(new KeyPosition(idx++, 437, 338, RotationDegrees: 22, Description: "Left thumb 2"));
+        list.Add(new KeyPosition(idx++, 509, 370, RotationDegrees: 34, Description: "Left thumb 3 (inner)"));
 
         // Right thumb cluster (57-59): inner → outer, mirroring the left
-        // around centerline x=630 (canvas width 1260).
-        list.Add(new KeyPosition(idx++, 702, 402, RotationDegrees: -34));
-        list.Add(new KeyPosition(idx++, 768, 360, RotationDegrees: -22));
-        list.Add(new KeyPosition(idx++, 840, 330, RotationDegrees: -10));
+        // around centerline x=600 (canvas width 1200).
+        list.Add(new KeyPosition(idx++, 642, 402, RotationDegrees: -34, Description: "Right thumb 1 (inner)"));
+        list.Add(new KeyPosition(idx++, 708, 360, RotationDegrees: -22, Description: "Right thumb 2"));
+        list.Add(new KeyPosition(idx++, 780, 330, RotationDegrees: -10, Description: "Right thumb 3 (outer)"));
 
         return list;
     }

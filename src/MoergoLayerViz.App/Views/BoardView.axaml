@@ -56,7 +56,8 @@
             <ItemsControl.ItemTemplate>
                 <DataTemplate x:DataType="vm:KeyViewModel">
                     <Grid Width="{Binding Position.Width}"
-                          Height="{Binding Position.Height}">
+                          Height="{Binding Position.Height}"
+                          ToolTip.Tip="{Binding Tooltip}">
                         <Grid.RenderTransform>
                             <RotateTransform Angle="{Binding Position.RotationDegrees}" />
                         </Grid.RenderTransform>
@@ -113,6 +114,7 @@
                         <StackPanel Orientation="Vertical"
                                     HorizontalAlignment="Center"
                                     VerticalAlignment="Center"
+                                    Margin="0,8,0,0"
                                     Spacing="2">
                             <i:Icon Value="{Binding IconName}"
                                     FontSize="14"

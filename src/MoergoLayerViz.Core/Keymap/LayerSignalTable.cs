@@ -34,26 +34,25 @@ public sealed class LayerSignalTable
     /// <summary>
     /// Builds the table by walking every layer binding and pairing each macro
     /// invocation with the detected signal-macro pattern for that macro.
-    /// Bindings using unknown macros are ignored.
+    /// Layer bindings can refer to a signal macro directly, or indirectly
+    /// through a hold-tap whose hold side is a signal macro — in the latter
+    /// case the hold-tap name is registered as an alias for the underlying
+    /// signal macro. Bindings that don't resolve are ignored.
     /// </summary>
     public static LayerSignalTable Build(
         KeyboardConfig config,
         IReadOnlyCollection<SignalMacro> signalMacros)
     {
-        var byMacroName = signalMacros.ToDictionary(s => s.MacroName, StringComparer.Ordinal);
+        var byBindingName = BuildSignalLookup(config, signalMacros);
         var map = new Dictionary<string, SignalKeyMapping>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var layer in config.Layers)
         {
             foreach (var b in layer.Bindings)
             {
-                if (!byMacroName.TryGetValue(b.Behavior, out var sig)) continue;
-                if (b.Params.Count <= Math.Max(sig.LayerParamIndex, sig.KeyParamIndex)) continue;
-
-                if (!int.TryParse(b.Params[sig.LayerParamIndex], out var targetLayer))
-                    continue;
-                var keycode = b.Params[sig.KeyParamIndex];
-                if (string.IsNullOrWhiteSpace(keycode)) continue;
+                if (!byBindingName.TryGetValue(b.Behavior, out var sig)) continue;
+                if (!sig.TryResolveTargetLayer(b, out var targetLayer)) continue;
+                if (!sig.TryResolveSignalKeycode(b, out var keycode)) continue;
 
                 // Last writer wins — if the user binds the same macro to
                 // multiple keys with different layers, we pick the last one
@@ -63,6 +62,26 @@ public sealed class LayerSignalTable
         }
 
         return new LayerSignalTable(map);
+    }
+
+    /// <summary>
+    /// Builds a name → signal macro lookup that includes both the macros
+    /// themselves and any hold-tap whose hold-side resolves to a signal
+    /// macro. The hold-tap name maps to the *underlying* signal macro so
+    /// callers transparently follow the indirection.
+    /// </summary>
+    public static Dictionary<string, SignalMacro> BuildSignalLookup(
+        KeyboardConfig config,
+        IReadOnlyCollection<SignalMacro> signalMacros)
+    {
+        var lookup = signalMacros.ToDictionary(s => s.MacroName, StringComparer.Ordinal);
+        foreach (var ht in config.HoldTaps)
+        {
+            if (lookup.ContainsKey(ht.Name)) continue;
+            if (lookup.TryGetValue(ht.HoldBinding, out var wrapped))
+                lookup[ht.Name] = wrapped;
+        }
+        return lookup;
     }
 }
 

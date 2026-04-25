@@ -355,7 +355,10 @@ public partial class MainWindowViewModel : ObservableObject
         ActiveLayerIndex = index;
         var layer = _config.Layers[index];
 
-        var signalByName = _signalMacros.ToDictionary(m => m.MacroName, StringComparer.Ordinal);
+        // Includes hold-tap names whose hold side is a signal macro, so an
+        // &ht_* layer binding resolves to its underlying SignalMacro.
+        var signalByName = LayerSignalTable.BuildSignalLookup(_config, _signalMacros);
+        var holdTapByName = _config.HoldTaps.ToDictionary(h => h.Name, StringComparer.Ordinal);
         var untrackableSet = new HashSet<(int layer, int key)>(_untrackable.Select(u => (u.LayerIndex, u.KeyIndex)));
 
         for (int i = 0; i < Keys.Count; i++)
@@ -370,12 +373,15 @@ public partial class MainWindowViewModel : ObservableObject
             var targetLayerName = targetLayer is int tl && tl >= 0 && tl < _config.Layers.Count
                 ? _config.Layers[tl].Name
                 : null;
+            holdTapByName.TryGetValue(binding.Behavior, out var holdTap);
             Keys[i].ApplyBinding(
                 binding,
                 isSignalMacro: isSignal,
                 isUntrackable: untrackableSet.Contains((layer.Index, i)),
                 targetLayer: targetLayer,
-                targetLayerName: targetLayerName);
+                targetLayerName: targetLayerName,
+                holdTap: holdTap,
+                signal: isSignal ? signalMacro : null);
         }
 
         for (int i = 0; i < Layers.Count; i++)
@@ -426,9 +432,12 @@ public partial class MainWindowViewModel : ObservableObject
         // id, hold-modifier) which are NOT wrappers and must not be folded
         // into the mod set.
         int startIndex;
-        if (signal is not null && b.Params.Count > signal.KeyParamIndex)
+        if (signal is not null
+            && signal.KeyParamIndex is int keyParamIdx
+            && b.Params.Count > keyParamIdx)
         {
-            startIndex = signal.KeyParamIndex;
+            // Routed signal macro — its keycode lives at this slot.
+            startIndex = keyParamIdx;
         }
         else switch (b.Behavior)
         {
@@ -611,7 +620,9 @@ public partial class MainWindowViewModel : ObservableObject
         IReadOnlyList<SignalMacro> signalMacros)
     {
         var result = new Dictionary<int, HashSet<int>>();
-        var signalByName = signalMacros.ToDictionary(m => m.MacroName, StringComparer.Ordinal);
+        // Hold-tap aliases included so &ht_* bindings register as predecessors
+        // of the layer their wrapped signal macro activates.
+        var signalByName = LayerSignalTable.BuildSignalLookup(config, signalMacros);
 
         for (int m = 0; m < config.Layers.Count; m++)
         {
@@ -626,8 +637,7 @@ public partial class MainWindowViewModel : ObservableObject
                     target = bareLayer;
                 }
                 else if (signalByName.TryGetValue(b.Behavior, out var sig)
-                    && b.Params.Count > sig.LayerParamIndex
-                    && int.TryParse(b.Params[sig.LayerParamIndex], out var sigLayer))
+                    && sig.TryResolveTargetLayer(b, out var sigLayer))
                 {
                     target = sigLayer;
                 }
@@ -696,8 +706,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private static int? ResolveTargetLayer(KeyBinding binding, SignalMacro? signal)
     {
-        if (signal is not null && binding.Params.Count > signal.LayerParamIndex
-            && int.TryParse(binding.Params[signal.LayerParamIndex], out var signalLayer))
+        if (signal is not null && signal.TryResolveTargetLayer(binding, out var signalLayer))
             return signalLayer;
 
         if ((binding.Behavior == "&to" || binding.Behavior == "&mo"

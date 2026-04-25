@@ -63,7 +63,6 @@ public class ZmkKeycodeLabelTests
     }
 
     [Theory]
-    [InlineData("TAB")]
     [InlineData("ESC")]
     [InlineData("F14")]
     [InlineData("A")]
@@ -71,6 +70,12 @@ public class ZmkKeycodeLabelTests
     public void Display_UnknownKeycodesFallThrough(string input)
     {
         Assert.Equal(input, ZmkKeycodeLabel.Display(input));
+    }
+
+    [Fact]
+    public void Display_TabRendersAsGlyph()
+    {
+        Assert.Equal("⇥", ZmkKeycodeLabel.Display("TAB"));
     }
 
     [Theory]

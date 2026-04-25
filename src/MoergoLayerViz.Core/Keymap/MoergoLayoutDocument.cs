@@ -21,6 +21,15 @@ internal sealed class MoergoLayoutDocument
     /// <summary>User-defined macros (optional — factory layouts may omit this).</summary>
     [JsonPropertyName("macros")]
     public List<MoergoMacroDefinition>? Macros { get; set; }
+
+    /// <summary>
+    /// User-defined hold-taps (optional). Each entry has a <c>bindings</c>
+    /// array of two strings: index 0 is the hold-side behavior, index 1 the
+    /// tap-side. Only those two are needed to follow layer changes; tuning
+    /// fields (tappingTermMs, flavor, …) are ignored.
+    /// </summary>
+    [JsonPropertyName("holdTaps")]
+    public List<MoergoHoldTapDefinition>? HoldTaps { get; set; }
 }
 
 internal sealed class MoergoBinding
@@ -78,4 +87,18 @@ internal sealed class MoergoMacroDefinition
 
     [JsonPropertyName("bindings")]
     public List<MoergoBinding>? Bindings { get; set; }
+}
+
+internal sealed class MoergoHoldTapDefinition
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    /// <summary>
+    /// Two-element string array: <c>[holdBehavior, tapBehavior]</c>. Note this
+    /// shape differs from <see cref="MoergoMacroDefinition.Bindings"/>, where
+    /// each entry is a full <see cref="MoergoBinding"/> object.
+    /// </summary>
+    [JsonPropertyName("bindings")]
+    public List<string>? Bindings { get; set; }
 }
