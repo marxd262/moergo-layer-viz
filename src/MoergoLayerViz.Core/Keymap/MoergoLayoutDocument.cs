@@ -30,6 +30,10 @@ internal sealed class MoergoLayoutDocument
     /// </summary>
     [JsonPropertyName("holdTaps")]
     public List<MoergoHoldTapDefinition>? HoldTaps { get; set; }
+
+    /// <summary>User-defined combos (optional).</summary>
+    [JsonPropertyName("combos")]
+    public List<MoergoComboDefinition>? Combos { get; set; }
 }
 
 internal sealed class MoergoBinding
@@ -87,6 +91,24 @@ internal sealed class MoergoMacroDefinition
 
     [JsonPropertyName("bindings")]
     public List<MoergoBinding>? Bindings { get; set; }
+}
+
+internal sealed class MoergoComboDefinition
+{
+    [JsonPropertyName("name")]
+    public string Name { get; set; } = "";
+
+    [JsonPropertyName("description")]
+    public string? Description { get; set; }
+
+    [JsonPropertyName("binding")]
+    public MoergoBinding? Binding { get; set; }
+
+    [JsonPropertyName("keyPositions")]
+    public List<int>? KeyPositions { get; set; }
+
+    [JsonPropertyName("layers")]
+    public List<int>? Layers { get; set; }
 }
 
 internal sealed class MoergoHoldTapDefinition

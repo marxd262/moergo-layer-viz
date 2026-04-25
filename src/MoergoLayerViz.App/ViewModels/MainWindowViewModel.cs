@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoergoLayerViz.App.Localization;
@@ -26,7 +28,13 @@ public partial class MainWindowViewModel : ObservableObject
     private KeyboardConfig? _config;
     private IReadOnlyList<SignalMacro> _signalMacros = Array.Empty<SignalMacro>();
     private LayerSignalTable _signalTable = new(new Dictionary<string, SignalKeyMapping>());
+    // Auto-detected mappings + the user's manual per-layer F-key bindings.
+    // The live tracker uses this; the keymap renderer uses _signalTable
+    // (auto-only) so manual mappings never affect how labels are drawn.
+    private LayerSignalTable _mergedSignalTable = new(new Dictionary<string, SignalKeyMapping>());
     private IReadOnlyList<UntrackableLayerSwitch> _untrackable = Array.Empty<UntrackableLayerSwitch>();
+    private string? _loadedLayoutPath;
+    private string? _lastLoadError;
 
     // Reverse adjacency: <layer> → set of layers that can push this layer onto
     // the active stack (via &mo / &lt / &sl / &tog / signal macro). Used to
@@ -65,12 +73,253 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty] private bool _isLiveHighlightingEnabled;
     [ObservableProperty] private bool _isAutoLayerSwitchEnabled;
     [ObservableProperty] private bool _hasLayoutLoaded;
+    [ObservableProperty] private string _toastMessage = "";
+    [ObservableProperty] private bool _isToastVisible;
+
+    // Cancels the auto-dismiss timer on a re-shown toast or manual dismiss.
+    private CancellationTokenSource? _toastCts;
+    private const int ToastDurationMs = 4000;
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActiveLayerTintColor))]
     private int _activeLayerIndex;
 
     /// <summary>Palette color for the active layer — used as the press-highlight pulse fill.</summary>
-    public string ActiveLayerTintColor => LayerColorPalette.GetColor(ActiveLayerIndex);
+    public string ActiveLayerTintColor => LayerColorPalette.GetColor(_profile.Id, ActiveLayerIndex);
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(BoardBackground))]
+    [NotifyPropertyChangedFor(nameof(TabBackground))]
+    private double _backgroundOpacity;
+
+    // Emitted in CSS-style #RRGGBBAA so HexColorToBrushConverter swaps the
+    // alpha to the front for Avalonia's #AARRGGBB. The base #181825 matches
+    // svalboard's port — kept identical so a fully-solid slider lands on the
+    // same dark plum the original UI used.
+    public string BoardBackground => $"#181825{(int)(BackgroundOpacity * 255):X2}";
+
+    // Tabs always retain at least 40% alpha so their text stays readable
+    // even at slider 0; svalboard's formula, ported verbatim.
+    public string TabBackground
+    {
+        get
+        {
+            const int baseAlpha = 0x66;
+            var alpha = Math.Min(255, baseAlpha + (int)(BackgroundOpacity * (255 - baseAlpha)));
+            return $"#181825{alpha:X2}";
+        }
+    }
+
+    partial void OnBackgroundOpacityChanged(double value) =>
+        PersistSetting(s => s with { BackgroundOpacity = value });
+
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(PressHighlightStrokeColor))]
+    private string _pressHighlightColor = "#FFD60A";
+
+    /// <summary>
+    /// Rim color for the press dot — darkened version of <see cref="PressHighlightColor"/>
+    /// so the dot reads against light layer fills. Multiplies each channel by 0.55
+    /// to roughly mimic the original yellow→olive (#FFD60A → #8A6D00) pairing.
+    /// </summary>
+    public string PressHighlightStrokeColor
+    {
+        get
+        {
+            if (TryParseRgb(PressHighlightColor, out var r, out var g, out var b))
+                return $"#{(int)(r * 0.55):X2}{(int)(g * 0.55):X2}{(int)(b * 0.55):X2}";
+            return "#8A6D00";
+        }
+    }
+
+    private static bool TryParseRgb(string hex, out int r, out int g, out int b)
+    {
+        r = g = b = 0;
+        if (string.IsNullOrEmpty(hex)) return false;
+        var s = hex.StartsWith('#') ? hex[1..] : hex;
+        if (s.Length < 6) return false;
+        return int.TryParse(s.AsSpan(0, 2), System.Globalization.NumberStyles.HexNumber, null, out r)
+            && int.TryParse(s.AsSpan(2, 2), System.Globalization.NumberStyles.HexNumber, null, out g)
+            && int.TryParse(s.AsSpan(4, 2), System.Globalization.NumberStyles.HexNumber, null, out b);
+    }
+
+    partial void OnPressHighlightColorChanged(string value) =>
+        PersistSetting(s => s with { PressHighlightColor = value });
+
+    /// <summary>
+    /// Global show/hide hotkey keycode (e.g. "F12"). Modifier handling lives
+    /// in <see cref="UserSettings.HotkeyModifiers"/> and isn't user-editable
+    /// today. Changing this raises <see cref="HotkeyKeyChanged"/> so the live
+    /// <c>GlobalHotkeyService</c> rewires without restart, and bumps the
+    /// signal-picker rebuild so the new hotkey is excluded from candidates.
+    /// </summary>
+    [ObservableProperty]
+    private string _hotkeyKey = "F12";
+
+    partial void OnHotkeyKeyChanged(string value)
+    {
+        PersistSetting(s => s with { HotkeyKey = value });
+        HotkeyKeyChanged?.Invoke(value);
+        // Same channel SettingsViewModel listens to for layer-signal picker rebuilds.
+        ManualLayerSignalsChanged?.Invoke();
+    }
+
+    public event Action<string>? HotkeyKeyChanged;
+
+    /// <summary>Read-through to the persisted modifier name. Not user-editable today; keeps the hotkey-rewire call site in App self-contained.</summary>
+    public string HotkeyModifiers => _settingsService.Load().HotkeyModifiers;
+
+    /// <summary>
+    /// Sets or clears a per-layer color override for the currently active
+    /// keyboard profile. Persists to <see cref="UserSettings.LayerColors"/>,
+    /// updates the static palette, and refreshes both the layer-tab swatches
+    /// (in place) and every key fill on the board.
+    /// </summary>
+    public void SetLayerColorOverride(int layerIndex, string? hex)
+    {
+        var profileId = _profile.Id;
+        LayerColorPalette.SetOverride(profileId, layerIndex, hex);
+
+        PersistSetting(s =>
+        {
+            var clone = new Dictionary<string, Dictionary<int, string>>();
+            foreach (var (pid, perLayer) in s.LayerColors)
+                clone[pid] = new Dictionary<int, string>(perLayer);
+
+            if (string.IsNullOrWhiteSpace(hex))
+            {
+                if (clone.TryGetValue(profileId, out var inner))
+                {
+                    inner.Remove(layerIndex);
+                    if (inner.Count == 0) clone.Remove(profileId);
+                }
+            }
+            else
+            {
+                if (!clone.TryGetValue(profileId, out var inner))
+                    clone[profileId] = inner = new Dictionary<int, string>();
+                inner[layerIndex] = hex!;
+            }
+            return s with { LayerColors = clone };
+        });
+
+        // Repaint tab swatches in place (re-creating Layers would steal selection focus).
+        foreach (var layer in Layers)
+            layer.TabColor = LayerColorPalette.GetColor(profileId, layer.Index);
+        // Re-resolve every key's fill — &lt / &mo / signal-macro keys reference
+        // arbitrary layer colors, so changing layer 2's tint repaints layer 0's view too.
+        if (_config is not null)
+            ApplyActiveLayer(ActiveLayerIndex);
+        OnPropertyChanged(nameof(ActiveLayerTintColor));
+    }
+
+    /// <summary>
+    /// First auto-detected signal keycode that activates <paramref name="layerIndex"/>,
+    /// or null if no signal macro maps to that layer. Used by Settings to label
+    /// which layers are already covered by auto-tracking.
+    /// </summary>
+    public string? GetAutoSignalKeycodeForLayer(int layerIndex)
+    {
+        foreach (var (kc, m) in _signalTable.Mappings)
+            if (m.TargetLayer == layerIndex) return kc;
+        return null;
+    }
+
+    /// <summary>User's manual signal keycode for the given layer on the current profile, or null.</summary>
+    public string? GetManualSignalKeycodeForLayer(int layerIndex)
+    {
+        var s = _settingsService.Load();
+        return s.ManualLayerSignals.TryGetValue(_profile.Id, out var perLayer)
+               && perLayer.TryGetValue(layerIndex, out var kc)
+            ? kc
+            : null;
+    }
+
+    /// <summary>
+    /// All signal keycodes the live tracker currently considers — auto plus
+    /// active manual mappings. Diagnostic surface for the Settings list to
+    /// compute "which F-keys are still free".
+    /// </summary>
+    public IReadOnlyDictionary<string, SignalKeyMapping> EffectiveSignalMappings => _mergedSignalTable.Mappings;
+
+    /// <summary>
+    /// Sets or clears the user's manual signal-keycode binding for the given
+    /// layer on the current profile. Auto-detected mappings always win, so
+    /// this is a no-op (silently persisted but ineffective) for layers that
+    /// already have an auto-detected signal macro. Persists, rebuilds the
+    /// merged signal table, and pushes it into the live tracker so the change
+    /// takes effect without restart.
+    /// </summary>
+    public void SetManualLayerSignal(int layerIndex, string? keycode)
+    {
+        var profileId = _profile.Id;
+        PersistSetting(s =>
+        {
+            var clone = new Dictionary<string, Dictionary<int, string>>();
+            foreach (var (pid, perLayer) in s.ManualLayerSignals)
+                clone[pid] = new Dictionary<int, string>(perLayer);
+
+            if (string.IsNullOrWhiteSpace(keycode))
+            {
+                if (clone.TryGetValue(profileId, out var inner))
+                {
+                    inner.Remove(layerIndex);
+                    if (inner.Count == 0) clone.Remove(profileId);
+                }
+            }
+            else
+            {
+                if (!clone.TryGetValue(profileId, out var inner))
+                    clone[profileId] = inner = new Dictionary<int, string>();
+                inner[layerIndex] = keycode!;
+            }
+            return s with { ManualLayerSignals = clone };
+        });
+
+        RebuildAndApplyMergedSignalTable();
+    }
+
+    /// <summary>
+    /// Recomputes <see cref="_mergedSignalTable"/> from the auto-detected
+    /// <see cref="_signalTable"/> plus the user's persisted manual mappings
+    /// for the active profile, and pushes the result into the live tracker.
+    /// </summary>
+    private void RebuildAndApplyMergedSignalTable()
+    {
+        var merged = new Dictionary<string, SignalKeyMapping>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (kc, m) in _signalTable.Mappings) merged[kc] = m;
+
+        // Layers already covered by auto-detection — manual entries for these
+        // are silently ignored (auto wins, per the UX rule "when autoswitch
+        // works, user can not override").
+        var autoLayers = new HashSet<int>(_signalTable.Mappings.Values.Select(m => m.TargetLayer));
+
+        var s = _settingsService.Load();
+        if (s.ManualLayerSignals.TryGetValue(_profile.Id, out var perLayer))
+        {
+            foreach (var (layerIdx, keycode) in perLayer)
+            {
+                if (autoLayers.Contains(layerIdx)) continue;
+                if (string.IsNullOrWhiteSpace(keycode)) continue;
+                if (merged.ContainsKey(keycode)) continue;  // first writer wins for keycode dedup
+                // Manual mappings target layers reached via &to/&tog which have
+                // no release event, so toggle-on-press semantics fit better
+                // than momentary hold.
+                merged[keycode] = new SignalKeyMapping(keycode, layerIdx, IsMomentary: false, "manual");
+            }
+        }
+
+        _mergedSignalTable = new LayerSignalTable(merged);
+        _tracker?.UpdateTable(_mergedSignalTable);
+        ManualLayerSignalsChanged?.Invoke();
+    }
+
+    /// <summary>
+    /// Raised after the merged signal table is rebuilt. SettingsViewModel
+    /// listens to refresh the per-layer picker rows when (a) a layout loads,
+    /// (b) the keyboard profile changes, or (c) the user toggles a manual
+    /// binding (which can free or claim an F-key for other layers).
+    /// </summary>
+    public event Action? ManualLayerSignalsChanged;
 
     public ObservableCollection<KeyViewModel> Keys { get; } = new();
     public ObservableCollection<LayerViewModel> Layers { get; } = new();
@@ -102,6 +351,7 @@ public partial class MainWindowViewModel : ObservableObject
     public Func<Task>? LoadLayoutRequested { get; set; }
     public Func<Task>? CopyDiagnosticsRequested { get; set; }
     public Action? ShowAccessibilityPromptRequested { get; set; }
+    public Action? OpenSettingsRequested { get; set; }
 
     private bool _accessibilityDialogShown;
 
@@ -117,6 +367,8 @@ public partial class MainWindowViewModel : ObservableObject
     public IRelayCommand OpenLogFolderCommand { get; }
     public IRelayCommand CopyDiagnosticsCommand { get; }
     public IRelayCommand<IKeyboardProfile> SelectKeyboardCommand { get; }
+    public IRelayCommand DismissToastCommand { get; }
+    public IRelayCommand OpenSettingsCommand { get; }
 
     private readonly SharpHookProvider? _hookProvider;
 
@@ -130,6 +382,14 @@ public partial class MainWindowViewModel : ObservableObject
         _isAlwaysOnTop = s.AlwaysOnTop;
         _isLiveHighlightingEnabled = s.LiveKeyHighlighting;
         _isAutoLayerSwitchEnabled = s.AutoLayerSwitch;
+        _backgroundOpacity = Math.Clamp(s.BackgroundOpacity, 0.0, 1.0);
+        if (!string.IsNullOrWhiteSpace(s.PressHighlightColor))
+            _pressHighlightColor = s.PressHighlightColor;
+        if (!string.IsNullOrWhiteSpace(s.HotkeyKey))
+            _hotkeyKey = s.HotkeyKey;
+        // Seed the static palette with persisted per-keyboard, per-layer overrides
+        // so the very first paint already reflects the user's customization.
+        LayerColorPalette.SetOverrides(s.LayerColors);
 
         QuitCommand = new RelayCommand(() => QuitRequested?.Invoke());
         ShowCommand = new RelayCommand(() => ShowWindowRequested?.Invoke());
@@ -139,8 +399,9 @@ public partial class MainWindowViewModel : ObservableObject
         });
         RefreshCommand = new RelayCommand(() =>
         {
-            var path = _settingsService.Load().LayoutJsonPath;
-            if (!string.IsNullOrEmpty(path)) LoadLayoutFromPath(path);
+            var paths = _settingsService.Load().LayoutJsonPaths;
+            if (paths.TryGetValue(_profile.Id, out var path) && !string.IsNullOrEmpty(path))
+                LoadLayoutFromPath(path);
         });
         TogglePinCommand = new RelayCommand(() =>
         {
@@ -176,6 +437,8 @@ public partial class MainWindowViewModel : ObservableObject
             if (CopyDiagnosticsRequested is not null) await CopyDiagnosticsRequested();
         });
         SelectKeyboardCommand = new RelayCommand<IKeyboardProfile>(SelectKeyboard);
+        DismissToastCommand = new RelayCommand(DismissToast);
+        OpenSettingsCommand = new RelayCommand(() => OpenSettingsRequested?.Invoke());
 
         BuildKeysFromProfile();
     }
@@ -187,9 +450,9 @@ public partial class MainWindowViewModel : ObservableObject
     public void InitializeAsync()
     {
         var s = _settingsService.Load();
-        if (!string.IsNullOrWhiteSpace(s.LayoutJsonPath) && File.Exists(s.LayoutJsonPath))
+        if (TryGetStoredPathForProfile(s, _profile.Id, out var storedPath))
         {
-            LoadLayoutFromPath(s.LayoutJsonPath);
+            LoadLayoutFromPath(storedPath);
         }
         else
         {
@@ -239,13 +502,19 @@ public partial class MainWindowViewModel : ObservableObject
             _untrackable = SignalMacroScanner.FindUntrackableLayerSwitches(config, _signalMacros);
             _layerPredecessors = BuildLayerPredecessors(config, _signalMacros);
 
-            _tracker?.UpdateTable(_signalTable);
+            RebuildAndApplyMergedSignalTable();
 
             RebuildLayers();
             ApplyActiveLayer(0);
             HasLayoutLoaded = true;
+            _loadedLayoutPath = path;
+            _lastLoadError = null;
 
-            PersistSetting(s => s with { LayoutJsonPath = path });
+            PersistSetting(s =>
+            {
+                var paths = new Dictionary<string, string>(s.LayoutJsonPaths) { [_profile.Id] = path };
+                return s with { LayoutJsonPaths = paths };
+            });
 
             var baseMsg = Loc.Instance.Format("Status_Loaded",
                 Path.GetFileName(path), config.LayerCount);
@@ -270,8 +539,88 @@ public partial class MainWindowViewModel : ObservableObject
         catch (Exception ex)
         {
             StatusMessage = Loc.Instance.Format("Status_LoadErrorFormat", ex.Message);
+            _lastLoadError = $"{path}: {ex.GetType().Name}: {ex.Message}";
             DiagnosticLog.Error("MainVM", $"Load failed: {ex}");
+            ShowToast(Loc.Instance.Format("Toast_LoadFailedFormat", Path.GetFileName(path), ex.Message));
         }
+    }
+
+    /// <summary>
+    /// Shows a transient toast banner that auto-dismisses after
+    /// <see cref="ToastDurationMs"/>. Re-entry cancels the previous timer so
+    /// the new message gets the full display window. Click on the toast
+    /// dismisses early via <see cref="DismissToastCommand"/>.
+    /// </summary>
+    public void ShowToast(string message)
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _toastCts = cts;
+
+        ToastMessage = message;
+        IsToastVisible = true;
+
+        _ = Task.Delay(ToastDurationMs, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (_toastCts == cts)
+                {
+                    IsToastVisible = false;
+                    _toastCts = null;
+                    cts.Dispose();
+                }
+            });
+        }, TaskScheduler.Default);
+    }
+
+    private void DismissToast()
+    {
+        _toastCts?.Cancel();
+        _toastCts?.Dispose();
+        _toastCts = null;
+        IsToastVisible = false;
+    }
+
+    /// <summary>
+    /// Builds a snapshot of runtime state (active settings, loaded layout,
+    /// signal-macro count, untrackable layer-switch list, last load error)
+    /// for inclusion in <see cref="DiagnosticLog.CollectDiagnosticReport"/>.
+    /// </summary>
+    public string BuildDiagnosticsSnapshot()
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine("--- Active Settings ---");
+        try
+        {
+            var settings = _settingsService.Load();
+            var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
+            sb.AppendLine(json);
+        }
+        catch (Exception ex)
+        {
+            sb.AppendLine($"(could not serialize settings: {ex.Message})");
+        }
+        sb.AppendLine();
+
+        sb.AppendLine("--- Active Keyboard ---");
+        sb.AppendLine($"Profile: {_profile.DisplayName} ({_profile.Id}), {_profile.KeyCount} keys");
+        sb.AppendLine($"Loaded layout: {_loadedLayoutPath ?? "(none)"}");
+        sb.AppendLine($"Last load error: {_lastLoadError ?? "(none)"}");
+        sb.AppendLine($"Signal macros detected: {_signalMacros.Count}");
+        sb.AppendLine($"Untrackable layer switches: {_untrackable.Count}");
+        if (_untrackable.Count > 0)
+        {
+            foreach (var u in _untrackable)
+            {
+                var target = u.TargetLayer is int t ? t.ToString() : "?";
+                sb.AppendLine($"  (layer {u.LayerIndex}, key index {u.KeyIndex}) {u.Behavior} {target}");
+            }
+        }
+
+        return sb.ToString();
     }
 
     /// <summary>Gracefully stops live tracking; idempotent. Called on window close / quit.</summary>
@@ -311,7 +660,7 @@ public partial class MainWindowViewModel : ObservableObject
             _signalTable = new LayerSignalTable(new Dictionary<string, SignalKeyMapping>());
             _untrackable = Array.Empty<UntrackableLayerSwitch>();
             _layerPredecessors = new Dictionary<int, HashSet<int>>();
-            _tracker?.UpdateTable(_signalTable);
+            RebuildAndApplyMergedSignalTable();
             Layers.Clear();
             ActiveLayerIndex = 0;
             HasLayoutLoaded = false;
@@ -319,6 +668,7 @@ public partial class MainWindowViewModel : ObservableObject
         }
         else if (_config is not null)
         {
+            RebuildAndApplyMergedSignalTable();
             ApplyActiveLayer(ActiveLayerIndex);
             StatusMessage = Loc.Instance.Format("Status_KeyboardSwitched", profile.DisplayName);
         }
@@ -329,6 +679,41 @@ public partial class MainWindowViewModel : ObservableObject
 
         PersistSetting(s => s with { Keyboard = profile.Id });
         DiagnosticLog.Info("MainVM", $"Keyboard profile switched to {profile.Id}");
+
+        // Auto-load whichever JSON the user last associated with this keyboard.
+        // If the previously-loaded layout already fits, leave it alone.
+        if (!HasLayoutLoaded
+            && TryGetStoredPathForProfile(_settingsService.Load(), profile.Id, out var storedPath))
+        {
+            LoadLayoutFromPath(storedPath);
+        }
+    }
+
+    /// <summary>
+    /// Returns the persisted JSON path for the given profile if one exists and
+    /// the file is still on disk. If the entry points at a file that has gone
+    /// missing, logs a warning and removes the stale entry from settings so
+    /// startup doesn't keep complaining about it.
+    /// </summary>
+    private bool TryGetStoredPathForProfile(UserSettings s, string profileId, out string path)
+    {
+        path = "";
+        if (!s.LayoutJsonPaths.TryGetValue(profileId, out var stored) || string.IsNullOrWhiteSpace(stored))
+            return false;
+        if (File.Exists(stored))
+        {
+            path = stored;
+            return true;
+        }
+
+        DiagnosticLog.Warn("MainVM", $"Stored layout for {profileId} is missing on disk: {stored}");
+        PersistSetting(curr =>
+        {
+            var paths = new Dictionary<string, string>(curr.LayoutJsonPaths);
+            paths.Remove(profileId);
+            return curr with { LayoutJsonPaths = paths };
+        });
+        return false;
     }
 
     private void RebuildLayers()
@@ -340,7 +725,7 @@ public partial class MainWindowViewModel : ObservableObject
             Layers.Add(new LayerViewModel(
                 layer.Index,
                 layer.Name,
-                LayerColorPalette.GetColor(layer.Index),
+                LayerColorPalette.GetColor(_profile.Id, layer.Index),
                 SelectLayer));
         }
     }
@@ -361,6 +746,18 @@ public partial class MainWindowViewModel : ObservableObject
         var holdTapByName = _config.HoldTaps.ToDictionary(h => h.Name, StringComparer.Ordinal);
         var untrackableSet = new HashSet<(int layer, int key)>(_untrackable.Select(u => (u.LayerIndex, u.KeyIndex)));
 
+        var combosByKey = new Dictionary<int, List<MoergoCombo>>();
+        foreach (var combo in _config.Combos)
+        {
+            if (!combo.AppliesToLayer(layer.Index)) continue;
+            foreach (var keyIdx in combo.KeyPositions)
+            {
+                if (!combosByKey.TryGetValue(keyIdx, out var list))
+                    combosByKey[keyIdx] = list = new List<MoergoCombo>();
+                list.Add(combo);
+            }
+        }
+
         for (int i = 0; i < Keys.Count; i++)
         {
             // Resolve the effective binding by walking the predecessor graph:
@@ -380,8 +777,18 @@ public partial class MainWindowViewModel : ObservableObject
                 isUntrackable: untrackableSet.Contains((layer.Index, i)),
                 targetLayer: targetLayer,
                 targetLayerName: targetLayerName,
+                profileId: _profile.Id,
                 holdTap: holdTap,
                 signal: isSignal ? signalMacro : null);
+        }
+
+        // Second pass — every key's label is now settled, so combo participants
+        // can be named by their rendered label (Q + W) in the tooltip.
+        string LabelLookup(int idx) => idx >= 0 && idx < Keys.Count ? Keys[idx].Label : "";
+        for (int i = 0; i < Keys.Count; i++)
+        {
+            if (combosByKey.TryGetValue(i, out var keyCombos))
+                Keys[i].SetCombos(keyCombos, LabelLookup);
         }
 
         for (int i = 0; i < Layers.Count; i++)
@@ -739,7 +1146,7 @@ public partial class MainWindowViewModel : ObservableObject
             var source = new SharpHookKeyEventSource(_hookProvider);
             source.HookFailed += OnHookFailed;
             _keyEventSource = source;
-            _tracker = new HotkeyLayerTracker(_keyEventSource, _signalTable);
+            _tracker = new HotkeyLayerTracker(_keyEventSource, _mergedSignalTable);
             _tracker.LayerChanged += OnLayerChangedFromHook;
             _tracker.KeyObserved += OnKeyObservedFromHook;
             _keyEventSource.Start();

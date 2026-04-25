@@ -14,7 +14,6 @@
         <SolidColorBrush x:Key="KeyStroke" Color="#B0B0B0" />
         <SolidColorBrush x:Key="LayerKeyFill" Color="#1F8B4C" />
         <SolidColorBrush x:Key="UntrackableKeyFill" Color="#E64980" />
-        <SolidColorBrush x:Key="PressHighlight" Color="#FFD60A" />
         <SolidColorBrush x:Key="KeyLabel" Color="#1E1E2E" />
         <SolidColorBrush x:Key="LayerKeyLabel" Color="#F2F2F2" />
     </UserControl.Resources>
@@ -70,11 +69,11 @@
                                    StrokeThickness="1"
                                    Fill="{Binding KeyFillColor, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}" />
 
-                        <!-- Press-indicator dot: saturated-yellow circle in the
-                             top-right corner, pulses when the hook sees this
-                             key fire. Color inlined (not StaticResource) because
-                             resource lookup into a DataTemplate scope is
-                             unreliable. -->
+                        <!-- Press-indicator dot: pulses when the hook sees this
+                             key fire. Fill/Stroke walk past the per-item
+                             KeyViewModel DataContext via ElementName=Board to
+                             pick up the user-chosen highlight color from the
+                             MainWindowViewModel that owns this UserControl. -->
                         <Ellipse Classes="pressDot"
                                  Classes.active="{Binding IsPressed}"
                                  Width="10" Height="10"
@@ -82,9 +81,26 @@
                                  VerticalAlignment="Top"
                                  Margin="0,5,5,0"
                                  IsHitTestVisible="False"
-                                 Fill="#FFD60A"
-                                 Stroke="#8A6D00"
+                                 Fill="{Binding DataContext.PressHighlightColor, ElementName=Board, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
+                                 Stroke="{Binding DataContext.PressHighlightStrokeColor, ElementName=Board, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
                                  StrokeThickness="1" />
+
+                        <!-- Combo-indicator earmark: right triangle hugging the
+                             bottom-left corner with the key's 6px radius
+                             baked into the geometry — left edge runs down to
+                             (0,8), arcs along the key corner to (6,14), then
+                             straight along the bottom to (14,14), then up the
+                             hypotenuse. Static (no animation). The combo's
+                             name, key positions, and resulting binding are
+                             appended to the per-key tooltip. -->
+                        <Path Data="M 0,0 L 0,8 A 6,6 0 0 0 6,14 L 14,14 Z"
+                              HorizontalAlignment="Left"
+                              VerticalAlignment="Bottom"
+                              IsHitTestVisible="False"
+                              IsVisible="{Binding IsInCombo}"
+                              Fill="#4DABF7"
+                              Stroke="#1971C2"
+                              StrokeThickness="1" />
 
                         <!-- Untrackable-layer warning: pink border over the base fill -->
                         <Rectangle RadiusX="6" RadiusY="6"

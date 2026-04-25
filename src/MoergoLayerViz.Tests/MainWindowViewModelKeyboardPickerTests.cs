@@ -90,4 +90,95 @@ public class MainWindowViewModelKeyboardPickerTests
         Assert.Equal("Glove80", vm.SelectedKeyboard.Id);
         Assert.Equal(80, vm.Keys.Count);
     }
+
+    [Fact]
+    public void SwitchKeyboard_AutoLoadsLastJsonForNewProfile()
+    {
+        var go60Path = Path.Combine(AppContext.BaseDirectory, "Go60.json");
+        var glove80Path = Path.Combine(AppContext.BaseDirectory, "Glove80.json");
+        var settings = new InMemorySettingsService
+        {
+            Current = new UserSettings
+            {
+                Keyboard = "GO60",
+                LayoutJsonPaths = new Dictionary<string, string>
+                {
+                    ["GO60"] = go60Path,
+                    ["Glove80"] = glove80Path,
+                },
+            },
+        };
+        var vm = new MainWindowViewModel(settings);
+        vm.LoadLayoutFromPath(go60Path);
+        Assert.Equal(60, vm.Keys.Count);
+
+        vm.SelectKeyboardCommand.Execute(new Glove80Profile());
+
+        Assert.True(vm.HasLayoutLoaded);
+        Assert.Equal(80, vm.Keys.Count);
+        Assert.Equal("Glove80", vm.SelectedKeyboard.Id);
+    }
+
+    [Fact]
+    public void SwitchKeyboard_NoStoredPath_LeavesBlank()
+    {
+        var go60Path = Path.Combine(AppContext.BaseDirectory, "Go60.json");
+        var settings = new InMemorySettingsService
+        {
+            Current = new UserSettings
+            {
+                Keyboard = "GO60",
+                LayoutJsonPaths = new Dictionary<string, string> { ["GO60"] = go60Path },
+            },
+        };
+        var vm = new MainWindowViewModel(settings);
+        vm.LoadLayoutFromPath(go60Path);
+
+        vm.SelectKeyboardCommand.Execute(new Glove80Profile());
+
+        Assert.False(vm.HasLayoutLoaded);
+        Assert.Equal(80, vm.Keys.Count);
+        Assert.Empty(vm.Layers);
+    }
+
+    [Fact]
+    public void LoadJson_PersistsUnderCurrentProfile_DoesNotClobberOtherProfileEntry()
+    {
+        var go60Path = Path.Combine(AppContext.BaseDirectory, "Go60.json");
+        var glove80Path = Path.Combine(AppContext.BaseDirectory, "Glove80.json");
+        var settings = new InMemorySettingsService
+        {
+            Current = new UserSettings
+            {
+                Keyboard = "GO60",
+                LayoutJsonPaths = new Dictionary<string, string> { ["Glove80"] = glove80Path },
+            },
+        };
+        var vm = new MainWindowViewModel(settings);
+
+        vm.LoadLayoutFromPath(go60Path);
+
+        Assert.Equal(go60Path, settings.Current.LayoutJsonPaths["GO60"]);
+        Assert.Equal(glove80Path, settings.Current.LayoutJsonPaths["Glove80"]);
+    }
+
+    [Fact]
+    public void Startup_StoredPathMissing_ClearsEntry()
+    {
+        var missingPath = Path.Combine(Path.GetTempPath(), $"definitely-not-here-{Guid.NewGuid():N}.json");
+        var settings = new InMemorySettingsService
+        {
+            Current = new UserSettings
+            {
+                Keyboard = "GO60",
+                LayoutJsonPaths = new Dictionary<string, string> { ["GO60"] = missingPath },
+            },
+        };
+        var vm = new MainWindowViewModel(settings);
+
+        vm.InitializeAsync();
+
+        Assert.False(vm.HasLayoutLoaded);
+        Assert.False(settings.Current.LayoutJsonPaths.ContainsKey("GO60"));
+    }
 }

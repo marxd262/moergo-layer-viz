@@ -23,13 +23,27 @@ public record UserSettings
     public string Keyboard { get; init; } = "GO60";
 
     /// <summary>
-    /// Absolute path to the user's Moergo layout-editor JSON export.
-    /// Null until the user picks a file — viewing is disabled without one.
+    /// Last-used Moergo layout-editor JSON path per keyboard profile.
+    /// Key = profile id ("GO60", "Glove80"), Value = absolute path. Empty until
+    /// the user has picked a file — switching keyboards reloads whichever JSON
+    /// was last associated with the new profile (or leaves the board blank if
+    /// none yet).
     /// </summary>
-    public string? LayoutJsonPath { get; init; }
+    public Dictionary<string, string> LayoutJsonPaths { get; init; } = new();
 
-    /// <summary>Per-layer color overrides. Key = layer index, Value = hex color "#RRGGBB".</summary>
-    public Dictionary<int, string> LayerColors { get; init; } = new();
+    /// <summary>
+    /// Per-layer color overrides, scoped per keyboard profile.
+    /// Outer key = profile id, inner key = layer index, value = hex "#RRGGBB".
+    /// </summary>
+    public Dictionary<string, Dictionary<int, string>> LayerColors { get; init; } = new();
+
+    /// <summary>
+    /// User-assigned signal keycodes for layers that have no auto-detected
+    /// signal macro. Outer key = profile id, inner key = layer index, value =
+    /// ZMK keycode (e.g. "F17"). Auto-detected mappings always take precedence;
+    /// entries here for layers with an auto mapping are silently ignored.
+    /// </summary>
+    public Dictionary<string, Dictionary<int, string>> ManualLayerSignals { get; init; } = new();
 
     /// <summary>Whether the window stays on top of other windows.</summary>
     public bool AlwaysOnTop { get; init; } = true;
@@ -51,6 +65,12 @@ public record UserSettings
 
     /// <summary>Background solidity behind the board (0.0 = transparent, 1.0 = solid dark). Default: 0.5.</summary>
     public double BackgroundOpacity { get; init; } = 0.5;
+
+    /// <summary>
+    /// Color used for the press-highlight dot pulsed on each pressed key.
+    /// Stored as "#RRGGBB". Default preserves the original saturated yellow.
+    /// </summary>
+    public string PressHighlightColor { get; init; } = "#FFD60A";
 
     /// <summary>Whether the user has seen the help/welcome window. Controls first-launch auto-open.</summary>
     public bool HasSeenHelp { get; init; } = false;

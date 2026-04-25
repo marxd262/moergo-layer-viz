@@ -9,7 +9,8 @@ public sealed record KeyboardConfig(
     string KeyboardId,
     IReadOnlyList<Layer> Layers,
     IReadOnlyList<MoergoMacro> Macros,
-    IReadOnlyList<HoldTap> HoldTaps)
+    IReadOnlyList<HoldTap> HoldTaps,
+    IReadOnlyList<MoergoCombo> Combos)
 {
     public int LayerCount => Layers.Count;
 }

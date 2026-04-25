@@ -53,6 +53,7 @@
 
   <!-- Application title / chrome -->
   <data name="Title_App"><value>Moergo Layer Viz</value></data>
+  <data name="Title_Settings"><value>Settings</value></data>
   <data name="Tray_Tooltip"><value>Moergo Layer Viz</value></data>
   <data name="Tray_ShowLayers"><value>Show Layers</value></data>
   <data name="Tray_Quit"><value>Quit</value></data>
@@ -85,9 +86,27 @@
   <data name="Status_LoadKeyCountMismatch"><value>layout has {0} keys but {1} expects {2} — switch keyboard or load a matching JSON</value></data>
   <data name="Status_AutoSwitchedKeyboard"><value>auto-switched to {0}</value></data>
 
+  <!-- Toasts -->
+  <data name="Toast_LoadFailedFormat"><value>Could not load {0}: {1}</value></data>
+
   <!-- File picker -->
   <data name="LoadDialog_Title"><value>Open Moergo layout JSON</value></data>
   <data name="LoadDialog_FileType"><value>Moergo layout JSON</value></data>
+
+  <!-- Settings window -->
+  <data name="Settings_BackgroundOpacity"><value>Background opacity</value></data>
+  <data name="Settings_BackgroundOpacityHint"><value>How solid the dark fill behind the keyboard is — drop to 0 for a fully transparent overlay.</value></data>
+  <data name="Settings_PressHighlight"><value>Press highlight color</value></data>
+  <data name="Settings_PressHighlightHint"><value>Color of the dot that pops on each pressed key.</value></data>
+  <data name="Settings_GlobalHotkey"><value>Global show/hide hotkey</value></data>
+  <data name="Settings_GlobalHotkeyHint"><value>Press this key from anywhere to toggle the layer overlay. Whichever key you pick is excluded from the layer-key list below.</value></data>
+  <data name="Settings_Tab_General"><value>General</value></data>
+  <data name="Settings_Tab_Layers"><value>Layers</value></data>
+  <data name="Settings_LayersFormat"><value>Layers — {0}</value></data>
+  <data name="Settings_LayersHint"><value>Customize each layer's color and signal key. Layers with an auto-detected signal macro show the keycode read-only; the rest get a manual F-key picker so live tracking can follow them.</value></data>
+  <data name="Settings_LayerColorsReset"><value>Reset</value></data>
+  <data name="Settings_LayerSignalsAutoFormat"><value>{0} (auto)</value></data>
+  <data name="Settings_LayerSignalsNone"><value>(none)</value></data>
 
   <!-- Accessibility permission prompt (macOS) -->
   <data name="Accessibility_Title"><value>Accessibility permission required</value></data>

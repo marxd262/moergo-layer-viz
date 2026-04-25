@@ -52,6 +52,7 @@
   <resheader name="writer"><value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value></resheader>
 
   <data name="Title_App"><value>Moergo Layer Viz</value></data>
+  <data name="Title_Settings"><value>Instellingen</value></data>
   <data name="Tray_Tooltip"><value>Moergo Layer Viz</value></data>
   <data name="Tray_ShowLayers"><value>Lagen tonen</value></data>
   <data name="Tray_Quit"><value>Afsluiten</value></data>
@@ -82,8 +83,24 @@
   <data name="Status_LoadKeyCountMismatch"><value>layout heeft {0} toetsen maar {1} verwacht er {2} — wissel toetsenbord of laad een passende JSON</value></data>
   <data name="Status_AutoSwitchedKeyboard"><value>automatisch gewisseld naar {0}</value></data>
 
+  <data name="Toast_LoadFailedFormat"><value>Kon {0} niet laden: {1}</value></data>
+
   <data name="LoadDialog_Title"><value>Moergo layout JSON openen</value></data>
   <data name="LoadDialog_FileType"><value>Moergo layout JSON</value></data>
+
+  <data name="Settings_BackgroundOpacity"><value>Achtergrondopaciteit</value></data>
+  <data name="Settings_BackgroundOpacityHint"><value>Hoe dicht de donkere vulling achter het toetsenbord is — zet op 0 voor een volledig transparante overlay.</value></data>
+  <data name="Settings_PressHighlight"><value>Kleur indrukmarkering</value></data>
+  <data name="Settings_PressHighlightHint"><value>Kleur van de stip die bij elke ingedrukte toets verschijnt.</value></data>
+  <data name="Settings_GlobalHotkey"><value>Globale toon/verberg-sneltoets</value></data>
+  <data name="Settings_GlobalHotkeyHint"><value>Druk overal op deze toets om de laagweergave te tonen of verbergen. De gekozen toets verschijnt niet in de laag-toetslijst hieronder.</value></data>
+  <data name="Settings_Tab_General"><value>Algemeen</value></data>
+  <data name="Settings_Tab_Layers"><value>Lagen</value></data>
+  <data name="Settings_LayersFormat"><value>Lagen — {0}</value></data>
+  <data name="Settings_LayersHint"><value>Pas per laag de kleur en signaaltoets aan. Lagen met een automatisch herkende signaalmacro tonen de keycode alleen-lezen; voor de overige kies je handmatig een F-toets zodat live tracking de laag kan volgen.</value></data>
+  <data name="Settings_LayerColorsReset"><value>Terugzetten</value></data>
+  <data name="Settings_LayerSignalsAutoFormat"><value>{0} (auto)</value></data>
+  <data name="Settings_LayerSignalsNone"><value>(geen)</value></data>
 
   <data name="Accessibility_Title"><value>Toegankelijkheidsrechten vereist</value></data>
   <data name="Accessibility_Body"><value>Moergo Layer Viz heeft toegankelijkheidsrechten nodig om het toetsenbord te volgen voor laagwissel-signaalsleutels. Verleen toegang via Systeeminstellingen → Privacy &amp; Beveiliging → Toegankelijkheid en herstart de app.</value></data>

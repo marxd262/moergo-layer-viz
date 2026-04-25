@@ -1,0 +1,159 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:MoergoLayerViz.App.ViewModels"
+        xmlns:conv="using:MoergoLayerViz.App.Converters"
+        x:Class="MoergoLayerViz.App.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="{Binding [Title_Settings], Source={StaticResource Loc}}"
+        Width="560" Height="640"
+        MinWidth="420" MinHeight="320"
+        WindowStartupLocation="CenterOwner">
+
+    <Window.Resources>
+        <conv:HexColorToBrushConverter x:Key="HexToBrush" />
+    </Window.Resources>
+
+    <TabControl Margin="8">
+
+        <!-- General tab: app-wide settings (not scoped per layer). -->
+        <TabItem Header="{Binding [Settings_Tab_General], Source={StaticResource Loc}}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="20" Spacing="16">
+
+                    <!-- Background opacity -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding [Settings_BackgroundOpacity], Source={StaticResource Loc}}"
+                                   FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" />
+                        <TextBlock Text="{Binding [Settings_BackgroundOpacityHint], Source={StaticResource Loc}}"
+                                   Foreground="#6C7086" FontSize="11" TextWrapping="Wrap" />
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                            <Slider Grid.Column="0"
+                                    Minimum="0" Maximum="1"
+                                    TickFrequency="0.05"
+                                    IsSnapToTickEnabled="True"
+                                    Value="{Binding BackgroundOpacity, Mode=TwoWay}"
+                                    VerticalAlignment="Center" />
+                            <TextBlock Grid.Column="1"
+                                       Text="{Binding BackgroundOpacityPercent}"
+                                       Foreground="#CDD6F4"
+                                       MinWidth="44"
+                                       TextAlignment="Right"
+                                       VerticalAlignment="Center"
+                                       Margin="8,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+
+                    <Border Height="1" Background="#313244" />
+
+                    <!-- Press-highlight color -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding [Settings_PressHighlight], Source={StaticResource Loc}}"
+                                   FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" />
+                        <TextBlock Text="{Binding [Settings_PressHighlightHint], Source={StaticResource Loc}}"
+                                   Foreground="#6C7086" FontSize="11" TextWrapping="Wrap" />
+                        <Button Padding="2" Margin="0,4,0,0"
+                                HorizontalAlignment="Left"
+                                Background="Transparent" BorderThickness="0">
+                            <Border Width="56" Height="22" CornerRadius="3"
+                                    Background="{Binding PressHighlightColorHex, Converter={StaticResource HexToBrush}}"
+                                    BorderBrush="#45475A" BorderThickness="1" />
+                            <Button.Flyout>
+                                <Flyout Placement="BottomEdgeAlignedLeft">
+                                    <ColorView Color="{Binding PressHighlightColor, Mode=TwoWay}"
+                                               IsAlphaVisible="False" />
+                                </Flyout>
+                            </Button.Flyout>
+                        </Button>
+                    </StackPanel>
+
+                    <Border Height="1" Background="#313244" />
+
+                    <!-- Global show/hide hotkey. Single key only (no modifier UI today);
+                         the chosen key is auto-excluded from the layer-key picker on the
+                         Layers tab so the two can't collide. -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding [Settings_GlobalHotkey], Source={StaticResource Loc}}"
+                                   FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" />
+                        <TextBlock Text="{Binding [Settings_GlobalHotkeyHint], Source={StaticResource Loc}}"
+                                   Foreground="#6C7086" FontSize="11" TextWrapping="Wrap" />
+                        <ComboBox MinWidth="120" Margin="0,4,0,0"
+                                  HorizontalAlignment="Left"
+                                  ItemsSource="{Binding HotkeyKeyChoices}"
+                                  SelectedItem="{Binding HotkeyKey, Mode=TwoWay}" />
+                    </StackPanel>
+
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+        <!-- Layers tab: per-loaded-layer color override + signal-key picker on
+             one row each. Rebuilds when the layout loads or active keyboard
+             profile changes. -->
+        <TabItem Header="{Binding [Settings_Tab_Layers], Source={StaticResource Loc}}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Margin="20" Spacing="12">
+
+                    <TextBlock Text="{Binding LayersHeader}"
+                               FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" />
+                    <TextBlock Text="{Binding [Settings_LayersHint], Source={StaticResource Loc}}"
+                               Foreground="#6C7086" FontSize="11" TextWrapping="Wrap" />
+
+                    <ItemsControl ItemsSource="{Binding LayerEntries}"
+                                  IsVisible="{Binding HasLayoutForLayers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LayerSettingsEntry">
+                                <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,3,0,3">
+                                    <TextBlock Grid.Column="0"
+                                               Text="{Binding DisplayName}"
+                                               Foreground="#CDD6F4"
+                                               VerticalAlignment="Center" />
+
+                                    <!-- Color swatch + picker -->
+                                    <Button Grid.Column="1" Padding="2"
+                                            Background="Transparent" BorderThickness="0">
+                                        <Border Width="56" Height="22" CornerRadius="3"
+                                                Background="{Binding Color.ColorHex, Converter={StaticResource HexToBrush}}"
+                                                BorderBrush="#45475A" BorderThickness="1" />
+                                        <Button.Flyout>
+                                            <Flyout Placement="BottomEdgeAlignedLeft">
+                                                <ColorView Color="{Binding Color.Color, Mode=TwoWay}"
+                                                           IsAlphaVisible="False" />
+                                            </Flyout>
+                                        </Button.Flyout>
+                                    </Button>
+
+                                    <Button Grid.Column="2" Margin="6,0,0,0"
+                                            Padding="8,2"
+                                            Content="{Binding [Settings_LayerColorsReset], Source={StaticResource Loc}}"
+                                            Command="{Binding Color.ResetCommand}" />
+
+                                    <!-- Signal key: auto-detected label OR manual picker (mutually exclusive). -->
+                                    <Grid Grid.Column="3" Margin="12,0,0,0" MinWidth="140">
+                                        <TextBlock Text="{Binding Signal.AutoDisplayText}"
+                                                   Foreground="#A6E3A1"
+                                                   FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   IsVisible="{Binding Signal.IsAutoDetected}" />
+                                        <ComboBox MinWidth="120"
+                                                  ItemsSource="{Binding Signal.AvailableChoices}"
+                                                  SelectedItem="{Binding Signal.SelectedChoice, Mode=TwoWay}"
+                                                  IsVisible="{Binding Signal.IsManualEditable}">
+                                            <ComboBox.ItemTemplate>
+                                                <DataTemplate x:DataType="vm:LayerSignalChoice">
+                                                    <TextBlock Text="{Binding DisplayName}" />
+                                                </DataTemplate>
+                                            </ComboBox.ItemTemplate>
+                                        </ComboBox>
+                                    </Grid>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                </StackPanel>
+            </ScrollViewer>
+        </TabItem>
+
+    </TabControl>
+
+</Window>

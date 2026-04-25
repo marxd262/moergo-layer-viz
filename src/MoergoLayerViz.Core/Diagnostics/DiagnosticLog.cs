@@ -94,8 +94,12 @@ public static class DiagnosticLog
 
     /// <summary>
     /// Collects a diagnostic report suitable for clipboard or file export.
+    /// <paramref name="snapshot"/>, when supplied, is inserted between the
+    /// environment and recent-log sections — used by the App layer to inject
+    /// runtime state (active settings, loaded layout, signal-macro counts, …)
+    /// that the Core logger doesn't have direct access to.
     /// </summary>
-    public static string CollectDiagnosticReport()
+    public static string CollectDiagnosticReport(string? snapshot = null)
     {
         var sb = new StringBuilder();
         sb.AppendLine("=== MoergoLayerViz Diagnostic Report ===");
@@ -109,13 +113,33 @@ public static class DiagnosticLog
         sb.AppendLine($"Process arch: {RuntimeInformation.ProcessArchitecture}");
         sb.AppendLine();
 
-        sb.AppendLine("--- Recent Log ---");
+        if (!string.IsNullOrWhiteSpace(snapshot))
+        {
+            sb.AppendLine(snapshot.TrimEnd());
+            sb.AppendLine();
+        }
+
+        sb.AppendLine("--- Current Session Log ---");
         try
         {
             if (File.Exists(LogPath))
             {
                 var lines = File.ReadAllLines(LogPath);
-                var start = Math.Max(0, lines.Length - 100);
+                // Anchor to the last "Application starting" marker (written by
+                // LogEnvironment at startup). Falls back to the last 100 lines
+                // if no marker is found (e.g. logging started mid-run).
+                var start = -1;
+                for (var i = lines.Length - 1; i >= 0; i--)
+                {
+                    if (lines[i].Contains("--- Application starting ---"))
+                    {
+                        start = i;
+                        break;
+                    }
+                }
+                if (start < 0)
+                    start = Math.Max(0, lines.Length - 100);
+
                 for (var i = start; i < lines.Length; i++)
                     sb.AppendLine(lines[i]);
             }

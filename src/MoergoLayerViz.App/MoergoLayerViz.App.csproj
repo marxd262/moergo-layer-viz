@@ -14,6 +14,7 @@
 
   <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.3.13" />
+    <PackageReference Include="Avalonia.Controls.ColorPicker" Version="11.3.13" />
     <PackageReference Include="Avalonia.Desktop" Version="11.3.13" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.13" />
     <!-- Pinned to override Avalonia.FreeDesktop's transitive 0.21.2 (CVE GHSA-xrw6-gwf8-vvr9). -->

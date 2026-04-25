@@ -189,11 +189,43 @@ public partial class App : Application
                     dialog.Show();
             };
 
+            // Single non-modal Settings window. Re-clicking the toolbar button
+            // brings the existing window to front rather than spawning a new one.
+            SettingsWindow? settingsWindow = null;
+            viewModel.OpenSettingsRequested = () =>
+            {
+                if (settingsWindow is { } existing && existing.IsVisible)
+                {
+                    existing.Activate();
+                    return;
+                }
+                settingsWindow = new SettingsWindow
+                {
+                    DataContext = new SettingsViewModel(settingsService, viewModel),
+                    Topmost = mainWindow.Topmost,
+                };
+                // Keep the settings window above the main window when the
+                // user has the main window pinned, otherwise it opens behind
+                // and looks lost.
+                void SyncTopmost(object? _, System.ComponentModel.PropertyChangedEventArgs e)
+                {
+                    if (e.PropertyName == nameof(MainWindowViewModel.IsAlwaysOnTop) && settingsWindow is { } w)
+                        w.Topmost = viewModel.IsAlwaysOnTop;
+                }
+                viewModel.PropertyChanged += SyncTopmost;
+                settingsWindow.Closed += (_, _) =>
+                {
+                    viewModel.PropertyChanged -= SyncTopmost;
+                    settingsWindow = null;
+                };
+                settingsWindow.Show(mainWindow);
+            };
+
             viewModel.CopyDiagnosticsRequested = async () =>
             {
                 try
                 {
-                    var report = DiagnosticLog.CollectDiagnosticReport();
+                    var report = DiagnosticLog.CollectDiagnosticReport(viewModel.BuildDiagnosticsSnapshot());
                     var clipboard = mainWindow.Clipboard;
                     if (clipboard is not null)
                     {
@@ -223,6 +255,19 @@ public partial class App : Application
                 _hotkeyService.HotkeyPressed = () =>
                     Dispatcher.UIThread.Post(() => viewModel.ToggleWindowRequested?.Invoke());
                 _hotkeyService.Start();
+                viewModel.HotkeyKeyChanged += newKey =>
+                {
+                    try
+                    {
+                        _hotkeyService.UpdateHotkey(
+                            GlobalHotkeyService.ParseKey(newKey),
+                            GlobalHotkeyService.ParseModifiers(viewModel.HotkeyModifiers));
+                    }
+                    catch (Exception ex)
+                    {
+                        DiagnosticLog.Warn("Hotkey", $"Failed to apply new hotkey '{newKey}': {ex.Message}");
+                    }
+                };
                 desktop.Exit += (_, _) => _hotkeyService.Dispose();
             }
 

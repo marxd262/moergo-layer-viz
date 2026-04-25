@@ -56,6 +56,7 @@ public partial class KeyViewModel : ObservableObject
     [ObservableProperty] private bool _isLayerSignalKey;
     [ObservableProperty] private bool _isPressed;
     [ObservableProperty] private bool _isUntrackableLayerSwitch;
+    [ObservableProperty] private bool _isInCombo;
     [ObservableProperty] private string _tooltip = "";
 
     /// <summary>
@@ -94,18 +95,26 @@ public partial class KeyViewModel : ObservableObject
         Position = position;
     }
 
+    // Tooltip without combo lines, captured so SetCombos can rebuild Tooltip
+    // by appending combo info without re-running the per-key binding logic.
+    private string _baseTooltip = "";
+
     /// <summary>
     /// Pushes a new binding from the active layer into this view model.
-    /// Driven by <see cref="MainWindowViewModel"/> on layer change.
+    /// Driven by <see cref="MainWindowViewModel"/> on layer change. Combo info
+    /// is layered on afterwards via <see cref="SetCombos"/>, once every key's
+    /// label is settled (so the combo tooltip can name participants by label).
     /// </summary>
-    public void ApplyBinding(KeyBinding binding, bool isSignalMacro, bool isUntrackable, int? targetLayer, string? targetLayerName, HoldTap? holdTap = null, SignalMacro? signal = null)
+    public void ApplyBinding(KeyBinding binding, bool isSignalMacro, bool isUntrackable, int? targetLayer, string? targetLayerName, string profileId, HoldTap? holdTap = null, SignalMacro? signal = null)
     {
         Behavior = binding.Behavior;
         IsLayerSignalKey = isSignalMacro;
         IsUntrackableLayerSwitch = isUntrackable;
-        KeyFillColor = ResolveFillColor(binding, targetLayer);
+        IsInCombo = false;
+        KeyFillColor = ResolveFillColor(binding, targetLayer, profileId);
         IconName = NormalizeIconName(binding.DecorationIcon);
-        Tooltip = BuildTooltip(binding, targetLayerName, holdTap, signal);
+        _baseTooltip = BuildTooltip(binding, targetLayerName, holdTap, signal);
+        Tooltip = _baseTooltip;
 
         // decoration.icon acts as flair above the label — if a decoration.label
         // is also set, it still drives the main label. Derived label/subscript
@@ -197,6 +206,42 @@ public partial class KeyViewModel : ObservableObject
     }
 
     /// <summary>
+    /// Appends combo information to the tooltip and flips <see cref="IsInCombo"/>.
+    /// Called by <see cref="MainWindowViewModel"/> in a second pass after every
+    /// key has its label settled, so participating keys can be named by their
+    /// rendered label (Q, W) rather than raw row/col coords.
+    /// </summary>
+    public void SetCombos(IReadOnlyList<MoergoCombo> combos, Func<int, string> labelLookup)
+    {
+        if (combos is null || combos.Count == 0)
+        {
+            IsInCombo = false;
+            Tooltip = _baseTooltip;
+            return;
+        }
+
+        IsInCombo = true;
+        var lines = new List<string> { _baseTooltip };
+        foreach (var combo in combos)
+        {
+            lines.Add("");
+            var comboBinding = combo.Binding.Display;
+            var heading = string.IsNullOrEmpty(combo.Name)
+                ? $"Combo → {comboBinding}"
+                : $"Combo \"{combo.Name}\" → {comboBinding}";
+            lines.Add(heading);
+            lines.Add("  Keys: " + string.Join(" + ", combo.KeyPositions.Select(idx => DescribeComboKey(idx, labelLookup))));
+        }
+        Tooltip = string.Join('\n', lines);
+    }
+
+    private static string DescribeComboKey(int idx, Func<int, string> labelLookup)
+    {
+        var label = labelLookup(idx);
+        return string.IsNullOrWhiteSpace(label) ? idx.ToString() : label;
+    }
+
+    /// <summary>
     /// Splits the keymap-binding params between the hold and tap sides of a
     /// hold-tap, using each side's declared arity. The hold side consumes the
     /// leading params, the tap side the trailing ones — matching ZMK's order.
@@ -222,12 +267,12 @@ public partial class KeyViewModel : ObservableObject
     /// <item>Empty string — the view renders the default <c>KeyFill</c>.</item>
     /// </list>
     /// </summary>
-    private static string ResolveFillColor(KeyBinding b, int? targetLayer)
+    private static string ResolveFillColor(KeyBinding b, int? targetLayer, string profileId)
     {
         if (!string.IsNullOrWhiteSpace(b.DecorationBackground))
             return b.DecorationBackground!;
         if (targetLayer is int layer)
-            return LayerColorPalette.GetColor(layer);
+            return LayerColorPalette.GetColor(profileId, layer);
         return DefaultKeyFill;
     }
 

@@ -202,6 +202,14 @@
                                       Data="M16 12V4h1V2H7v2h1v8l-2 2v2h5.2v6h1.6v-6H18v-2z" />
                         </Button>
 
+                        <!-- Settings (background opacity, press color, layer colors) -->
+                        <Button x:Name="SettingsButton" Command="{Binding OpenSettingsCommand}"
+                                Padding="8,4"
+                                ToolTip.Tip="{Binding [Tooltip_Settings], Source={StaticResource Loc}}">
+                            <PathIcon Width="14" Height="14"
+                                      Data="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+                        </Button>
+
                         <!-- Open log folder (diagnostic) -->
                         <Button x:Name="OpenLogFolderButton" Command="{Binding OpenLogFolderCommand}"
                                 Padding="8,4"
@@ -232,7 +240,7 @@
 
             <!-- Layer tabs -->
             <Border x:Name="LayerTabs" Grid.Row="1"
-                    Background="#2A2A3D"
+                    Background="{Binding TabBackground, Converter={StaticResource HexToBrush}}"
                     Padding="8,2">
                 <ItemsControl ItemsSource="{Binding Layers}">
                     <ItemsControl.ItemsPanel>
@@ -263,8 +271,46 @@
 
         <!-- Board visualization area -->
         <Border Grid.Row="1" Padding="16"
-                Background="#14141F">
+                Background="{Binding BoardBackground, Converter={StaticResource HexToBrush}}">
             <views:BoardView DataContext="{Binding}" />
+        </Border>
+
+        <!-- Transient error toast: fades in/out via Opacity transition.
+             Stays in the layout when hidden so the fade-out animation can run;
+             IsHitTestVisible is gated on the same class so clicks pass through
+             to the board when the toast isn't shown. -->
+        <Border Grid.Row="1"
+                Classes.show="{Binding IsToastVisible}"
+                HorizontalAlignment="Center" VerticalAlignment="Top"
+                Margin="0,12,0,0"
+                Padding="16,10"
+                CornerRadius="6"
+                Background="#E03131" BorderBrush="#A51F1F" BorderThickness="1"
+                MaxWidth="640">
+            <Border.Styles>
+                <Style Selector="Border">
+                    <Setter Property="Opacity" Value="0" />
+                    <Setter Property="IsHitTestVisible" Value="False" />
+                    <Setter Property="Transitions">
+                        <Transitions>
+                            <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
+                        </Transitions>
+                    </Setter>
+                </Style>
+                <Style Selector="Border.show">
+                    <Setter Property="Opacity" Value="1" />
+                    <Setter Property="IsHitTestVisible" Value="True" />
+                </Style>
+            </Border.Styles>
+            <Button Command="{Binding DismissToastCommand}"
+                    Background="Transparent" BorderThickness="0"
+                    Padding="0" Cursor="Hand"
+                    Focusable="False">
+                <TextBlock Text="{Binding ToastMessage}"
+                           Foreground="#FFFFFF"
+                           TextWrapping="Wrap"
+                           HorizontalAlignment="Center" />
+            </Button>
         </Border>
 
     </Grid>

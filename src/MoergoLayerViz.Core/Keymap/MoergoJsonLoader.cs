@@ -62,11 +62,16 @@ public static class MoergoJsonLoader
             .Where(ht => ht is not null)
             .Select(ht => ht!)
             .ToList();
+        var combos = (doc.Combos ?? new())
+            .Select(ToCombo)
+            .Where(c => c is not null)
+            .Select(c => c!)
+            .ToList();
 
         DiagnosticLog.Info("JsonLoader",
-            $"Loaded keyboard='{doc.Keyboard}' layers={layers.Count} macros={macros.Count} holdTaps={holdTaps.Count}");
+            $"Loaded keyboard='{doc.Keyboard}' layers={layers.Count} macros={macros.Count} holdTaps={holdTaps.Count} combos={combos.Count}");
 
-        return new KeyboardConfig(doc.Keyboard, layers, macros, holdTaps);
+        return new KeyboardConfig(doc.Keyboard, layers, macros, holdTaps, combos);
     }
 
     // ---- Conversion helpers ----
@@ -82,6 +87,25 @@ public static class MoergoJsonLoader
             DecorationBackground = string.IsNullOrWhiteSpace(src.Decoration?.Background) ? null : src.Decoration!.Background,
             DecorationIcon = string.IsNullOrWhiteSpace(src.Decoration?.Icon) ? null : src.Decoration!.Icon,
         };
+    }
+
+    /// <summary>
+    /// Converts a wire-level combo into the public model. Skips entries that
+    /// are missing a binding or that have fewer than two key positions (a
+    /// 1-key combo is meaningless).
+    /// </summary>
+    private static MoergoCombo? ToCombo(MoergoComboDefinition src)
+    {
+        if (src.Binding is null) return null;
+        var positions = src.KeyPositions ?? new();
+        if (positions.Count < 2) return null;
+        var layers = src.Layers ?? new() { -1 };
+        return new MoergoCombo(
+            src.Name ?? "",
+            src.Description ?? "",
+            positions.ToArray(),
+            layers.ToArray(),
+            ToBinding(src.Binding));
     }
 
     private static MoergoMacro ToMacro(MoergoMacroDefinition src)
