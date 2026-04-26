@@ -68,7 +68,12 @@ public partial class MainWindowViewModel : ObservableObject
     private const int ModifierGraceMs = 25;
 
     // --- UI-bindable state ---
-    [ObservableProperty] private string _statusMessage = "";
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(StatusMessageFull))]
+    private string _statusMessage = "";
+
+    /// <summary>Tooltip text for the (often-truncated) status bar — full status + keyboard hint joined.</summary>
+    public string StatusMessageFull => $"{StatusMessage}  ·  {KeyboardStatusHint}";
     [ObservableProperty] private bool _isAlwaysOnTop;
     [ObservableProperty] private bool _isLiveHighlightingEnabled;
     [ObservableProperty] private bool _isAutoLayerSwitchEnabled;
@@ -414,6 +419,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(KeyboardStatusHint))]
+    [NotifyPropertyChangedFor(nameof(StatusMessageFull))]
     private IKeyboardProfile _selectedKeyboard = null!;
 
     /// <summary>Right-aligned status-bar hint: "DisplayName · N keys".</summary>
@@ -429,6 +435,10 @@ public partial class MainWindowViewModel : ObservableObject
     public Func<Task>? CopyDiagnosticsRequested { get; set; }
     public Action? ShowAccessibilityPromptRequested { get; set; }
     public Action? OpenSettingsRequested { get; set; }
+    public Action? OpenGenerateSignalsRequested { get; set; }
+
+    /// <summary>Path of the layout JSON the user currently has loaded, or null if none.</summary>
+    public string? LoadedLayoutPath => _loadedLayoutPath;
 
     private bool _accessibilityDialogShown;
 
@@ -440,12 +450,12 @@ public partial class MainWindowViewModel : ObservableObject
     public IRelayCommand TogglePinCommand { get; }
     public IRelayCommand ToggleLiveHighlightingCommand { get; }
     public IRelayCommand ToggleAutoLayerSwitchCommand { get; }
-    public IRelayCommand ResetLayerStateCommand { get; }
     public IRelayCommand OpenLogFolderCommand { get; }
     public IRelayCommand CopyDiagnosticsCommand { get; }
     public IRelayCommand<IKeyboardProfile> SelectKeyboardCommand { get; }
     public IRelayCommand DismissToastCommand { get; }
     public IRelayCommand OpenSettingsCommand { get; }
+    public IRelayCommand OpenGenerateSignalsCommand { get; }
 
     private readonly SharpHookProvider? _hookProvider;
 
@@ -495,7 +505,6 @@ public partial class MainWindowViewModel : ObservableObject
             if (!IsAutoLayerSwitchEnabled)
                 ResetLayerState();
         });
-        ResetLayerStateCommand = new RelayCommand(ResetLayerState);
         OpenLogFolderCommand = new RelayCommand(() =>
         {
             try
@@ -518,6 +527,7 @@ public partial class MainWindowViewModel : ObservableObject
         SelectKeyboardCommand = new RelayCommand<IKeyboardProfile>(SelectKeyboard);
         DismissToastCommand = new RelayCommand(DismissToast);
         OpenSettingsCommand = new RelayCommand(() => OpenSettingsRequested?.Invoke());
+        OpenGenerateSignalsCommand = new RelayCommand(() => OpenGenerateSignalsRequested?.Invoke());
 
         BuildKeysFromProfile();
     }

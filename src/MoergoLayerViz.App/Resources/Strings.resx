@@ -63,7 +63,6 @@
   <data name="Tooltip_Minimize"><value>Minimize</value></data>
   <data name="Tooltip_LiveHighlighting"><value>Live key highlighting</value></data>
   <data name="Tooltip_AutoLayerSwitch"><value>Auto layer switch</value></data>
-  <data name="Tooltip_ResetLayerTracking"><value>Reset layer tracking</value></data>
   <data name="Tooltip_AlwaysOnTop"><value>Always on top</value></data>
   <data name="Tooltip_OpenLogFolder"><value>Open log folder</value></data>
   <data name="Tooltip_CopyDiagnostics"><value>Copy diagnostics to clipboard</value></data>
@@ -71,6 +70,7 @@
   <data name="Tooltip_Settings"><value>Settings</value></data>
   <data name="Tooltip_Refresh"><value>Reload layout JSON</value></data>
   <data name="Tooltip_LoadLayout"><value>Load Moergo layout JSON…</value></data>
+  <data name="Tooltip_GenerateSignals"><value>Generate signal macros &amp; hold-taps…</value></data>
   <data name="Tooltip_Keyboard"><value>Keyboard</value></data>
   <data name="Tooltip_StackedLayout"><value>Toggle stacked layout</value></data>
 
@@ -93,6 +93,28 @@
   <!-- File picker -->
   <data name="LoadDialog_Title"><value>Open Moergo layout JSON</value></data>
   <data name="LoadDialog_FileType"><value>Moergo layout JSON</value></data>
+  <data name="GenerateSaveDialog_Title"><value>Save layout with generated macros</value></data>
+
+  <!-- Generate signals window -->
+  <data name="Title_GenerateSignals"><value>Generate signal macros &amp; hold-taps</value></data>
+  <data name="Generate_Heading"><value>Generate signal macros &amp; hold-taps</value></data>
+  <data name="Generate_Description"><value>Adds parametric &amp;Tolayer / &amp;Molayer macros, one fixed &amp;mo_&lt;layer&gt;_f&lt;NN&gt;signal macro per non-base layer, and a matching &amp;ht_&lt;layer&gt; hold-tap for each. Existing entries with the same name are skipped, and your keybindings are not modified.</value></data>
+  <data name="Generate_LoadedLayout"><value>Loaded layout</value></data>
+  <data name="Generate_NoLayoutLoaded"><value>(no layout loaded)</value></data>
+  <data name="Generate_StartFkey"><value>Starting Fkey (F13–F24)</value></data>
+  <data name="Generate_StartFkeyHint"><value>The first non-base layer is mapped to this Fkey, the next to start+1, and so on. F13–F24 are reserved on most OSes so they won't collide with normal typing.</value></data>
+  <data name="Generate_Button"><value>Generate &amp; save…</value></data>
+  <data name="Generate_StatusFkeyRange"><value>Starting Fkey must be between F{0} and F{1}.</value></data>
+  <data name="Generate_StatusReadFailed"><value>Could not read the loaded layout: {0}</value></data>
+  <data name="Generate_StatusGenerateFailed"><value>Generation failed: {0}</value></data>
+  <data name="Generate_StatusWriteFailed"><value>Could not write output file: {0}</value></data>
+  <data name="Generate_StatusSuccess"><value>Added {0} entries → {1}</value></data>
+  <data name="Generate_ResultsHeading"><value>Result</value></data>
+  <data name="Generate_Added"><value>Added</value></data>
+  <data name="Generate_Skipped"><value>Skipped (already present)</value></data>
+  <data name="Generate_Warnings"><value>Warnings</value></data>
+  <data name="Generate_NextSteps"><value>Next steps in the Moergo editor</value></data>
+  <data name="Generate_NextStepsBody"><value>1. Import the saved JSON into the Moergo layout editor.&#10;2. Drop &amp;ht_&lt;layer&gt; onto the keys you want to use for momentary layer switching on hold (one tap-side keycode parameter per binding).&#10;3. Or use &amp;Tolayer &lt;layer&gt; &lt;Fkey&gt; / &amp;Molayer &lt;layer&gt; &lt;Fkey&gt; directly for a parametric switch on any other key.&#10;4. Build and flash. The visualizer's auto-layer-switch will follow the new bindings automatically.</value></data>
 
   <!-- Settings window -->
   <data name="Settings_BackgroundOpacity"><value>Background opacity</value></data>
