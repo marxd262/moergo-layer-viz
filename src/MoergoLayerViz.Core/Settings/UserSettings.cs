@@ -99,4 +99,13 @@ public record UserSettings
 
     /// <summary>Minimum log level for diagnostic logging. Default "Info". Values: Trace, Debug, Info, Warn, Error.</summary>
     public string LogLevel { get; init; } = "Info";
+
+    /// <summary>
+    /// When true, the two halves of the keyboard render stacked vertically
+    /// instead of side-by-side. Useful for narrow / portrait window placements.
+    /// </summary>
+    public bool StackedLayout { get; init; } = false;
+
+    /// <summary>Which half goes on top in stacked mode. "Left" or "Right".</summary>
+    public string StackedTopHand { get; init; } = "Left";
 }

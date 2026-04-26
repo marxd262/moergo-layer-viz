@@ -64,6 +64,19 @@ public partial class SettingsViewModel : ObservableObject
             .Concat(Enumerable.Range(1, 12).Select(n => $"F{n}"))
             .ToArray();
 
+    /// <summary>Top-hand picker choices for stacked layout. Mirrors svalboard's UX.</summary>
+    public IReadOnlyList<string> AvailableTopHands { get; } = new[] { "Left", "Right" };
+
+    /// <summary>Whether the stacked layout is enabled. Drives the IsEnabled state of the top-hand picker.</summary>
+    public bool IsStackedLayout => _mainViewModel.IsStackedLayout;
+
+    /// <summary>Which half ("Left"/"Right") sits on top in stacked mode. Two-way bound to the main VM, which persists.</summary>
+    public string StackedTopHand
+    {
+        get => _mainViewModel.StackedTopHand;
+        set => _mainViewModel.StackedTopHand = value;
+    }
+
     /// <summary>Combined per-layer rows for the Layers tab: each row has a color picker + signal-key picker.</summary>
     public ObservableCollection<LayerSettingsEntry> LayerEntries { get; } = new();
 
@@ -102,6 +115,14 @@ public partial class SettingsViewModel : ObservableObject
             OnPropertyChanged(nameof(HotkeyKey));
             // Hotkey changes shrink/grow the available F-key pool for layer signals.
             RebuildLayerEntries();
+        }
+        else if (e.PropertyName == nameof(MainWindowViewModel.IsStackedLayout))
+        {
+            OnPropertyChanged(nameof(IsStackedLayout));
+        }
+        else if (e.PropertyName == nameof(MainWindowViewModel.StackedTopHand))
+        {
+            OnPropertyChanged(nameof(StackedTopHand));
         }
         else if (e.PropertyName == nameof(MainWindowViewModel.SelectedKeyboard))
         {

@@ -82,6 +82,23 @@
                                   SelectedItem="{Binding HotkeyKey, Mode=TwoWay}" />
                     </StackPanel>
 
+                    <Border Height="1" Background="#313244" />
+
+                    <!-- Layout: top-hand picker for stacked mode. Greyed out
+                         until the user enables stacked layout via the toolbar. -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding [Settings_Layout], Source={StaticResource Loc}}"
+                                   FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" />
+                        <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,4,0,0"
+                                    IsEnabled="{Binding IsStackedLayout}">
+                            <TextBlock Text="{Binding [Settings_TopHand], Source={StaticResource Loc}}"
+                                       VerticalAlignment="Center" Foreground="#A6ADC8" FontSize="12" />
+                            <ComboBox MinWidth="100"
+                                      ItemsSource="{Binding AvailableTopHands}"
+                                      SelectedItem="{Binding StackedTopHand, Mode=TwoWay}" />
+                        </StackPanel>
+                    </StackPanel>
+
                 </StackPanel>
             </ScrollViewer>
         </TabItem>

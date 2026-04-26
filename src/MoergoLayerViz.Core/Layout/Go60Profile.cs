@@ -79,13 +79,15 @@ public sealed class Go60Profile : IKeyboardProfile
             {
                 var col = c + 1;
                 list.Add(new KeyPosition(idx++, leftCols[c].X, leftCols[c].Top + row * RowPitch,
-                    Description: $"Row {row + 1}, L col {col} ({fingerByCol[c]})"));
+                    Description: $"Row {row + 1}, L col {col} ({fingerByCol[c]})",
+                    Hand: Hand.Left));
             }
             for (int i = rightCols.Length - 1; i >= 0; i--)   // right: inner → outer
             {
                 var col = i + 1; // mirrored: i=5 (inner index) → col 6, i=0 (outer pinky) → col 1
                 list.Add(new KeyPosition(idx++, rightCols[i].X, rightCols[i].Top + row * RowPitch,
-                    Description: $"Row {row + 1}, R col {col} ({fingerByCol[i]})"));
+                    Description: $"Row {row + 1}, R col {col} ({fingerByCol[i]})",
+                    Hand: Hand.Right));
             }
         }
 
@@ -94,23 +96,25 @@ public sealed class Go60Profile : IKeyboardProfile
         for (int c = 0; c < leftCols.Length; c++)
             if (leftCols[c].HasRow5)
                 list.Add(new KeyPosition(idx++, leftCols[c].X, leftCols[c].Top + 4 * RowPitch,
-                    Description: $"Row 5, L col {c + 1} ({fingerByCol[c]})"));
+                    Description: $"Row 5, L col {c + 1} ({fingerByCol[c]})",
+                    Hand: Hand.Left));
         for (int i = rightCols.Length - 1; i >= 0; i--)
             if (rightCols[i].HasRow5)
                 list.Add(new KeyPosition(idx++, rightCols[i].X, rightCols[i].Top + 4 * RowPitch,
-                    Description: $"Row 5, R col {i + 1} ({fingerByCol[i]})"));
+                    Description: $"Row 5, R col {i + 1} ({fingerByCol[i]})",
+                    Hand: Hand.Right));
 
         // Left thumb cluster (54-56): outer → inner. Rotations fan the keys
         // toward the thumb's natural arc; coords match the xaml.io sketch.
-        list.Add(new KeyPosition(idx++, 360, 320, RotationDegrees: 10, Description: "Left thumb 1 (outer)"));
-        list.Add(new KeyPosition(idx++, 437, 338, RotationDegrees: 22, Description: "Left thumb 2"));
-        list.Add(new KeyPosition(idx++, 509, 370, RotationDegrees: 34, Description: "Left thumb 3 (inner)"));
+        list.Add(new KeyPosition(idx++, 360, 320, RotationDegrees: 10, Description: "Left thumb 1 (outer)", Hand: Hand.Left));
+        list.Add(new KeyPosition(idx++, 437, 338, RotationDegrees: 22, Description: "Left thumb 2", Hand: Hand.Left));
+        list.Add(new KeyPosition(idx++, 509, 370, RotationDegrees: 34, Description: "Left thumb 3 (inner)", Hand: Hand.Left));
 
         // Right thumb cluster (57-59): inner → outer, mirroring the left
         // around centerline x=600 (canvas width 1200).
-        list.Add(new KeyPosition(idx++, 642, 402, RotationDegrees: -34, Description: "Right thumb 1 (inner)"));
-        list.Add(new KeyPosition(idx++, 708, 360, RotationDegrees: -22, Description: "Right thumb 2"));
-        list.Add(new KeyPosition(idx++, 780, 330, RotationDegrees: -10, Description: "Right thumb 3 (outer)"));
+        list.Add(new KeyPosition(idx++, 642, 402, RotationDegrees: -34, Description: "Right thumb 1 (inner)", Hand: Hand.Right));
+        list.Add(new KeyPosition(idx++, 708, 360, RotationDegrees: -22, Description: "Right thumb 2", Hand: Hand.Right));
+        list.Add(new KeyPosition(idx++, 780, 330, RotationDegrees: -10, Description: "Right thumb 3 (outer)", Hand: Hand.Right));
 
         return list;
     }

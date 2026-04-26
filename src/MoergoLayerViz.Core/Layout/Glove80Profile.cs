@@ -96,60 +96,60 @@ public sealed class Glove80Profile : IKeyboardProfile
 
         // Row 1 / F-row (indices 0-9). Inner-index columns (L6/R1) skipped.
         foreach (var c in leftCols)
-            if (c.HasRow0) list.Add(new KeyPosition(idx++, c.X, YFor(c, 0)));
+            if (c.HasRow0) list.Add(new KeyPosition(idx++, c.X, YFor(c, 0), Hand: Hand.Left));
         for (int i = rightCols.Length - 1; i >= 0; i--)
             if (rightCols[i].HasRow0)
-                list.Add(new KeyPosition(idx++, rightCols[i].X, YFor(rightCols[i], 0)));
+                list.Add(new KeyPosition(idx++, rightCols[i].X, YFor(rightCols[i], 0), Hand: Hand.Right));
 
         // Rows 2-4 (indices 10-45): 12 keys each, all columns.
         for (int row = 1; row <= 3; row++)
         {
             foreach (var c in leftCols)
-                list.Add(new KeyPosition(idx++, c.X, YFor(c, row)));
+                list.Add(new KeyPosition(idx++, c.X, YFor(c, row), Hand: Hand.Left));
             for (int i = rightCols.Length - 1; i >= 0; i--)
-                list.Add(new KeyPosition(idx++, rightCols[i].X, YFor(rightCols[i], row)));
+                list.Add(new KeyPosition(idx++, rightCols[i].X, YFor(rightCols[i], row), Hand: Hand.Right));
         }
 
         // Row 5 left (indices 46-51): GRAVE, ZXCVB. L1..L6 outer→inner.
         foreach (var c in leftCols)
-            list.Add(new KeyPosition(idx++, c.X, YFor(c, 4)));
+            list.Add(new KeyPosition(idx++, c.X, YFor(c, 4), Hand: Hand.Left));
 
         // Thumb top-row (indices 52-57): LH row-A 3 keys, then RH row-A 3 keys.
         // Row A is the row closer to the main matrix (less rotation).
         // Within each hand's row, inner→outer (from the hand's index-finger
         // side toward the palm/thumb-tip side).
-        list.Add(new KeyPosition(idx++, 430, 340, RotationDegrees:  12)); // 52: LH A inner
-        list.Add(new KeyPosition(idx++, 503, 358, RotationDegrees:  25)); // 53: LH A middle
-        list.Add(new KeyPosition(idx++, 565, 390, RotationDegrees:  35)); // 54: LH A outer
+        list.Add(new KeyPosition(idx++, 430, 340, RotationDegrees:  12, Hand: Hand.Left));  // 52: LH A inner
+        list.Add(new KeyPosition(idx++, 503, 358, RotationDegrees:  25, Hand: Hand.Left));  // 53: LH A middle
+        list.Add(new KeyPosition(idx++, 565, 390, RotationDegrees:  35, Hand: Hand.Left));  // 54: LH A outer
 
-        list.Add(new KeyPosition(idx++, 643, 424, RotationDegrees: -35)); // 55: RH A outer
-        list.Add(new KeyPosition(idx++, 700, 382, RotationDegrees: -25)); // 56: RH A middle
-        list.Add(new KeyPosition(idx++, 770, 352, RotationDegrees: -12)); // 57: RH A inner
+        list.Add(new KeyPosition(idx++, 643, 424, RotationDegrees: -35, Hand: Hand.Right)); // 55: RH A outer
+        list.Add(new KeyPosition(idx++, 700, 382, RotationDegrees: -25, Hand: Hand.Right)); // 56: RH A middle
+        list.Add(new KeyPosition(idx++, 770, 352, RotationDegrees: -12, Hand: Hand.Right)); // 57: RH A inner
 
         // Row 5 right (indices 58-63): NM,./PgUp. R1..R6 inner→outer.
         for (int i = rightCols.Length - 1; i >= 0; i--)
-            list.Add(new KeyPosition(idx++, rightCols[i].X, YFor(rightCols[i], 4)));
+            list.Add(new KeyPosition(idx++, rightCols[i].X, YFor(rightCols[i], 4), Hand: Hand.Right));
 
         // Row 6 left (indices 64-68): Magic, Home, End, ←, →.
         // L1..L5 outer→inner; L6 has no row 6.
         foreach (var c in leftCols)
-            if (c.HasRow5) list.Add(new KeyPosition(idx++, c.X, YFor(c, 5)));
+            if (c.HasRow5) list.Add(new KeyPosition(idx++, c.X, YFor(c, 5), Hand: Hand.Left));
 
         // Thumb bottom-row (indices 69-74): LH row-B 3 keys, then RH row-B 3.
         // Row B is the row further from the main matrix (higher rotation).
-        list.Add(new KeyPosition(idx++, 375, 398, RotationDegrees:  10)); // 69: LH B inner
-        list.Add(new KeyPosition(idx++, 450, 415, RotationDegrees:  23)); // 70: LH B middle
-        list.Add(new KeyPosition(idx++, 520, 448, RotationDegrees:  36)); // 71: LH B outer
+        list.Add(new KeyPosition(idx++, 375, 398, RotationDegrees:  10, Hand: Hand.Left));  // 69: LH B inner
+        list.Add(new KeyPosition(idx++, 450, 415, RotationDegrees:  23, Hand: Hand.Left));  // 70: LH B middle
+        list.Add(new KeyPosition(idx++, 520, 448, RotationDegrees:  36, Hand: Hand.Left));  // 71: LH B outer
 
-        list.Add(new KeyPosition(idx++, 685, 482, RotationDegrees: -36)); // 72: RH B outer
-        list.Add(new KeyPosition(idx++, 748, 439, RotationDegrees: -25)); // 73: RH B middle
-        list.Add(new KeyPosition(idx++, 820, 408, RotationDegrees: -12)); // 74: RH B inner
+        list.Add(new KeyPosition(idx++, 685, 482, RotationDegrees: -36, Hand: Hand.Right)); // 72: RH B outer
+        list.Add(new KeyPosition(idx++, 748, 439, RotationDegrees: -25, Hand: Hand.Right)); // 73: RH B middle
+        list.Add(new KeyPosition(idx++, 820, 408, RotationDegrees: -12, Hand: Hand.Right)); // 74: RH B inner
 
         // Row 6 right (indices 75-79): ↑, ↓, {, }, PgDn.
         // R2..R6 inner→outer; R1 has no row 6.
         for (int i = rightCols.Length - 1; i >= 0; i--)
             if (rightCols[i].HasRow5)
-                list.Add(new KeyPosition(idx++, rightCols[i].X, YFor(rightCols[i], 5)));
+                list.Add(new KeyPosition(idx++, rightCols[i].X, YFor(rightCols[i], 5), Hand: Hand.Right));
 
         System.Diagnostics.Debug.Assert(idx == 80, $"Expected 80 keys, built {idx}");
         return list;

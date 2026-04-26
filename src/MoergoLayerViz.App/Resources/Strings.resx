@@ -72,6 +72,7 @@
   <data name="Tooltip_Refresh"><value>Reload layout JSON</value></data>
   <data name="Tooltip_LoadLayout"><value>Load Moergo layout JSON…</value></data>
   <data name="Tooltip_Keyboard"><value>Keyboard</value></data>
+  <data name="Tooltip_StackedLayout"><value>Toggle stacked layout</value></data>
 
   <!-- Status messages -->
   <data name="Status_Ready"><value>Ready</value></data>
@@ -107,6 +108,8 @@
   <data name="Settings_LayerColorsReset"><value>Reset</value></data>
   <data name="Settings_LayerSignalsAutoFormat"><value>{0} (auto)</value></data>
   <data name="Settings_LayerSignalsNone"><value>(none)</value></data>
+  <data name="Settings_Layout"><value>Layout</value></data>
+  <data name="Settings_TopHand"><value>Top hand</value></data>
 
   <!-- Accessibility permission prompt (macOS) -->
   <data name="Accessibility_Title"><value>Accessibility permission required</value></data>

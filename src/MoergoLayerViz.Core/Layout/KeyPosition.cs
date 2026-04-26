@@ -1,5 +1,12 @@
 namespace MoergoLayerViz.Core.Layout;
 
+/// <summary>Which half of the split keyboard a key belongs to. Drives the stacked-layout split rendering.</summary>
+public enum Hand
+{
+    Left,
+    Right,
+}
+
 /// <summary>
 /// Absolute position of a single physical key on the board canvas.
 /// Coordinates are the upper-left corner of the rectangle, in canvas units.
@@ -18,6 +25,11 @@ namespace MoergoLayerViz.Core.Layout;
 /// "Left thumb 1") used for tooltips. Profiles populate this; null is fine
 /// and callers fall back to the index.
 /// </param>
+/// <param name="Hand">
+/// Which half of the split keyboard this key belongs to. Profiles assign
+/// this at build time; the stacked-layout renderer partitions keys by hand
+/// so each half can be translated independently.
+/// </param>
 public sealed record KeyPosition(
     int Index,
     double X,
@@ -25,7 +37,8 @@ public sealed record KeyPosition(
     double Width = KeyPosition.StandardKeySize,
     double Height = KeyPosition.StandardKeySize,
     double RotationDegrees = 0,
-    string? Description = null)
+    string? Description = null,
+    Hand Hand = Hand.Left)
 {
     public const double StandardKeySize = 60;
 }

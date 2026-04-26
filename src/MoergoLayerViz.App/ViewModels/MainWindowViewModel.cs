@@ -322,11 +322,88 @@ public partial class MainWindowViewModel : ObservableObject
     public event Action? ManualLayerSignalsChanged;
 
     public ObservableCollection<KeyViewModel> Keys { get; } = new();
+    /// <summary>Left-hand subset of <see cref="Keys"/>. Bound separately so the stacked-layout renderer can translate the half independently.</summary>
+    public ObservableCollection<KeyViewModel> LeftKeys { get; } = new();
+    /// <summary>Right-hand subset of <see cref="Keys"/>. Bound separately so the stacked-layout renderer can translate the half independently.</summary>
+    public ObservableCollection<KeyViewModel> RightKeys { get; } = new();
     public ObservableCollection<LayerViewModel> Layers { get; } = new();
 
-    /// <summary>Canvas size for the current keyboard profile (drives BoardView's Canvas width/height).</summary>
-    public double CanvasWidth => _profile.CanvasWidth;
-    public double CanvasHeight => _profile.CanvasHeight;
+    // Per-profile bounding boxes for each hand, recomputed on profile change.
+    // Used to translate each half's container in stacked mode so the bounding
+    // box starts at the canvas-edge margin.
+    private (double MinX, double MinY, double MaxX, double MaxY) _leftBounds;
+    private (double MinX, double MinY, double MaxX, double MaxY) _rightBounds;
+
+    /// <summary>Margin around the bounding boxes in stacked mode.</summary>
+    private const double StackedMargin = 30;
+    /// <summary>Vertical gap between the two halves in stacked mode.</summary>
+    private const double StackedGap = 60;
+
+    /// <summary>When true, the two halves render stacked vertically instead of side-by-side. Persisted across launches.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(CanvasWidth))]
+    [NotifyPropertyChangedFor(nameof(CanvasHeight))]
+    [NotifyPropertyChangedFor(nameof(LeftHandX))]
+    [NotifyPropertyChangedFor(nameof(LeftHandY))]
+    [NotifyPropertyChangedFor(nameof(RightHandX))]
+    [NotifyPropertyChangedFor(nameof(RightHandY))]
+    private bool _isStackedLayout;
+
+    partial void OnIsStackedLayoutChanged(bool value) =>
+        PersistSetting(s => s with { StackedLayout = value });
+
+    /// <summary>Which half ("Left"/"Right") sits on top in stacked mode. Ignored in horizontal mode.</summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(LeftHandX))]
+    [NotifyPropertyChangedFor(nameof(LeftHandY))]
+    [NotifyPropertyChangedFor(nameof(RightHandX))]
+    [NotifyPropertyChangedFor(nameof(RightHandY))]
+    private string _stackedTopHand = "Left";
+
+    partial void OnStackedTopHandChanged(string value) =>
+        PersistSetting(s => s with { StackedTopHand = value });
+
+    /// <summary>Canvas size for the current keyboard profile and layout mode (drives BoardView's Canvas width/height).</summary>
+    public double CanvasWidth => IsStackedLayout
+        ? Math.Max(_leftBounds.MaxX - _leftBounds.MinX, _rightBounds.MaxX - _rightBounds.MinX) + 2 * StackedMargin
+        : _profile.CanvasWidth;
+
+    public double CanvasHeight => IsStackedLayout
+        ? (_leftBounds.MaxY - _leftBounds.MinY) + (_rightBounds.MaxY - _rightBounds.MinY) + StackedGap + 2 * StackedMargin
+        : _profile.CanvasHeight;
+
+    /// <summary>
+    /// Per-hand drawing surface size, independent of layout mode. Each per-hand
+    /// ItemsControl in BoardView binds Width/Height to these so it has a
+    /// non-zero render box — keys position themselves absolutely within it
+    /// using the original profile coordinates, and the surrounding Canvas.Left/
+    /// Top translates the whole surface for stacked mode.
+    /// </summary>
+    public double BoardSurfaceWidth => _profile.CanvasWidth;
+    public double BoardSurfaceHeight => _profile.CanvasHeight;
+
+    /// <summary>X translation applied to the left-hand container.</summary>
+    public double LeftHandX => IsStackedLayout ? StackedMargin - _leftBounds.MinX : 0;
+
+    /// <summary>Y translation applied to the left-hand container. Goes below the right hand if "Right" is on top.</summary>
+    public double LeftHandY => !IsStackedLayout
+        ? 0
+        : (StackedTopHand == "Right"
+            ? StackedMargin + (_rightBounds.MaxY - _rightBounds.MinY) + StackedGap - _leftBounds.MinY
+            : StackedMargin - _leftBounds.MinY);
+
+    /// <summary>X translation applied to the right-hand container.</summary>
+    public double RightHandX => IsStackedLayout ? StackedMargin - _rightBounds.MinX : 0;
+
+    /// <summary>Y translation applied to the right-hand container. Goes below the left hand by default.</summary>
+    public double RightHandY => !IsStackedLayout
+        ? 0
+        : (StackedTopHand == "Right"
+            ? StackedMargin - _rightBounds.MinY
+            : StackedMargin + (_leftBounds.MaxY - _leftBounds.MinY) + StackedGap - _rightBounds.MinY);
+
+    [RelayCommand]
+    private void ToggleStackedLayout() => IsStackedLayout = !IsStackedLayout;
 
     /// <summary>All keyboard profiles the user can switch between, for the picker flyout.</summary>
     public IReadOnlyList<IKeyboardProfile> AvailableKeyboards => KeyboardProfileRegistry.All;
@@ -387,6 +464,8 @@ public partial class MainWindowViewModel : ObservableObject
             _pressHighlightColor = s.PressHighlightColor;
         if (!string.IsNullOrWhiteSpace(s.HotkeyKey))
             _hotkeyKey = s.HotkeyKey;
+        _isStackedLayout = s.StackedLayout;
+        _stackedTopHand = string.IsNullOrWhiteSpace(s.StackedTopHand) ? "Left" : s.StackedTopHand;
         // Seed the static palette with persisted per-keyboard, per-layer overrides
         // so the very first paint already reflects the user's customization.
         LayerColorPalette.SetOverrides(s.LayerColors);
@@ -482,8 +561,6 @@ public partial class MainWindowViewModel : ObservableObject
                     _profile = matching;
                     SelectedKeyboard = matching;
                     BuildKeysFromProfile();
-                    OnPropertyChanged(nameof(CanvasWidth));
-                    OnPropertyChanged(nameof(CanvasHeight));
                     PersistSetting(s => s with { Keyboard = matching.Id });
                     autoSwitchedTo = matching;
                     DiagnosticLog.Info("MainVM",
@@ -634,8 +711,48 @@ public partial class MainWindowViewModel : ObservableObject
     private void BuildKeysFromProfile()
     {
         Keys.Clear();
+        LeftKeys.Clear();
+        RightKeys.Clear();
+
+        double lMinX = double.PositiveInfinity, lMinY = double.PositiveInfinity;
+        double lMaxX = double.NegativeInfinity, lMaxY = double.NegativeInfinity;
+        double rMinX = double.PositiveInfinity, rMinY = double.PositiveInfinity;
+        double rMaxX = double.NegativeInfinity, rMaxY = double.NegativeInfinity;
+
         foreach (var pos in _profile.Keys)
-            Keys.Add(new KeyViewModel(pos));
+        {
+            var vm = new KeyViewModel(pos);
+            Keys.Add(vm);
+            if (pos.Hand == Hand.Left)
+            {
+                LeftKeys.Add(vm);
+                if (pos.X < lMinX) lMinX = pos.X;
+                if (pos.Y < lMinY) lMinY = pos.Y;
+                if (pos.X + pos.Width > lMaxX) lMaxX = pos.X + pos.Width;
+                if (pos.Y + pos.Height > lMaxY) lMaxY = pos.Y + pos.Height;
+            }
+            else
+            {
+                RightKeys.Add(vm);
+                if (pos.X < rMinX) rMinX = pos.X;
+                if (pos.Y < rMinY) rMinY = pos.Y;
+                if (pos.X + pos.Width > rMaxX) rMaxX = pos.X + pos.Width;
+                if (pos.Y + pos.Height > rMaxY) rMaxY = pos.Y + pos.Height;
+            }
+        }
+
+        _leftBounds = LeftKeys.Count > 0 ? (lMinX, lMinY, lMaxX, lMaxY) : (0, 0, 0, 0);
+        _rightBounds = RightKeys.Count > 0 ? (rMinX, rMinY, rMaxX, rMaxY) : (0, 0, 0, 0);
+
+        // Layout-derived properties depend on the freshly-computed bounds.
+        OnPropertyChanged(nameof(CanvasWidth));
+        OnPropertyChanged(nameof(CanvasHeight));
+        OnPropertyChanged(nameof(BoardSurfaceWidth));
+        OnPropertyChanged(nameof(BoardSurfaceHeight));
+        OnPropertyChanged(nameof(LeftHandX));
+        OnPropertyChanged(nameof(LeftHandY));
+        OnPropertyChanged(nameof(RightHandX));
+        OnPropertyChanged(nameof(RightHandY));
     }
 
     private void SelectKeyboard(IKeyboardProfile? profile)
@@ -646,8 +763,6 @@ public partial class MainWindowViewModel : ObservableObject
         _profile = profile;
         SelectedKeyboard = profile;
         BuildKeysFromProfile();
-        OnPropertyChanged(nameof(CanvasWidth));
-        OnPropertyChanged(nameof(CanvasHeight));
 
         var layoutFits = _config is not null
             && _config.LayerCount > 0

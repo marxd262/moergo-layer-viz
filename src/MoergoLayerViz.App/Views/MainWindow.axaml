@@ -164,6 +164,17 @@
                                       Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
                         </Button>
 
+                        <!-- Stacked / horizontal layout toggle -->
+                        <Button x:Name="StackedLayoutButton"
+                                Command="{Binding ToggleStackedLayoutCommand}"
+                                Classes="toggle"
+                                Classes.active="{Binding IsStackedLayout}"
+                                Padding="8,4"
+                                ToolTip.Tip="{Binding [Tooltip_StackedLayout], Source={StaticResource Loc}}">
+                            <PathIcon Width="14" Height="14"
+                                      Data="M4 2h16v8H4V2zm0 12h16v8H4v-8z" />
+                        </Button>
+
                         <!-- Reset active layer to base -->
                         <Button x:Name="ResetButton" Command="{Binding ResetLayerStateCommand}"
                                 Padding="8,4"
