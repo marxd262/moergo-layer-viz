@@ -127,7 +127,7 @@ public partial class KeyViewModel : ObservableObject
             return;
         }
 
-        var (label, sub, topLeft) = FormatBinding(binding, targetLayerName, holdTap);
+        var (label, sub, topLeft) = FormatBinding(binding, targetLayerName, holdTap, signal);
         Label = label;
         Subscript = sub;
         TopLeftLabel = topLeft;
@@ -276,11 +276,25 @@ public partial class KeyViewModel : ObservableObject
         return DefaultKeyFill;
     }
 
-    private static (string Label, string Subscript, string TopLeft) FormatBinding(KeyBinding b, string? targetLayerName, HoldTap? holdTap = null)
+    private static (string Label, string Subscript, string TopLeft) FormatBinding(KeyBinding b, string? targetLayerName, HoldTap? holdTap = null, SignalMacro? signal = null)
     {
         // User-authored decoration.label from the Moergo editor wins outright.
         if (!string.IsNullOrEmpty(b.DecorationLabel))
             return (b.DecorationLabel, "", "");
+
+        // Recognised layer-switch macro (wraps &mo / &to / &tog / &lt / … with a
+        // host-visible signal keycode): mirror the bare &to layout — main label
+        // is the target layer name, with a "Macro" badge so the user can tell
+        // it's a macro-wrapped switch. The signal keycode stays in the tooltip.
+        // Skip when the binding is also a hold-tap: the Hold-Tap path below
+        // surfaces the layer name as the subscript and keeps the tap-side
+        // keycode visible, which is more informative for &ht_*-style wrappers.
+        if (signal is not null && holdTap is null)
+        {
+            var layerLabel = targetLayerName
+                ?? (signal.TryResolveTargetLayer(b, out var idx) ? "L" + idx : b.Behavior.TrimStart('&'));
+            return (layerLabel, "", "Macro");
+        }
 
         // Hold-tap: split the keymap params between hold and tap sides
         // according to each side's declared arity, render the tap-side as the
