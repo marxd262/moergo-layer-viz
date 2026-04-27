@@ -133,11 +133,17 @@ public partial class App : Application
             var trayIcons = TrayIcon.GetIcons(this);
             if (trayIcons?.Count > 0)
             {
-                trayIcons[0].Icon = new WindowIcon(
+                var trayIcon = trayIcons[0];
+                trayIcon.Icon = new WindowIcon(
                     AssetLoader.Open(new Uri("avares://MoergoLayerViz.App/Assets/icon.png")));
-                LocalizeTrayMenu(trayIcons[0]);
-                Loc.CultureChanged += () =>
-                    Dispatcher.UIThread.Post(() => LocalizeTrayMenu(trayIcons[0]));
+                LocalizeTrayMenu(trayIcon);
+                // Named delegate so we can detach on Exit. Without the -=, every
+                // runtime culture switch leaks the prior handler's tray-icon
+                // capture and re-localizes already-collected closures.
+                Action onCultureChanged = () =>
+                    Dispatcher.UIThread.Post(() => LocalizeTrayMenu(trayIcon));
+                Loc.CultureChanged += onCultureChanged;
+                desktop.Exit += (_, _) => Loc.CultureChanged -= onCultureChanged;
             }
 
             viewModel.ShowWindowRequested = () =>
@@ -200,9 +206,10 @@ public partial class App : Application
                     existing.Activate();
                     return;
                 }
+                var settingsVm = new SettingsViewModel(settingsService, viewModel);
                 settingsWindow = new SettingsWindow
                 {
-                    DataContext = new SettingsViewModel(settingsService, viewModel),
+                    DataContext = settingsVm,
                     Topmost = mainWindow.Topmost,
                 };
                 // Keep the settings window above the main window when the
@@ -217,6 +224,7 @@ public partial class App : Application
                 settingsWindow.Closed += (_, _) =>
                 {
                     viewModel.PropertyChanged -= SyncTopmost;
+                    settingsVm.Dispose();
                     settingsWindow = null;
                 };
                 settingsWindow.Show(mainWindow);

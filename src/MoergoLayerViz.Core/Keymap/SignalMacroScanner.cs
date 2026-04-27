@@ -310,9 +310,22 @@ public static class SignalMacroScanner
 
         bool hasLayer = layerParam is not null || literalLayer is not null;
         bool hasKey = keyParam is not null || literalKeycode is not null;
-        if (!hasLayer || !hasKey) return false;
+        if (!hasLayer || !hasKey)
+        {
+            // The macro had a phase marker so it looked plausible, but we
+            // couldn't pin down both a layer and a signal kp. Useful when a
+            // user is debugging "why isn't my macro auto-detected".
+            DiagnosticLog.Debug("SignalMacroScanner",
+                $"Macro '{macro.Name}' skipped — hasLayer={hasLayer}, hasKey={hasKey}");
+            return false;
+        }
 
-        bool momentary = IndexOf(b, "&macro_pause_for_release") >= 0;
+        // Momentary iff the press/tap phase we just walked ENDED at a
+        // pause-for-release marker. Searching the whole binding list (the
+        // earlier impl) would mis-flag a fire-once `&macro_tap` macro whose
+        // unrelated release phase happened to contain `&macro_pause_for_release`.
+        bool momentary = endIdx < b.Count
+            && b[endIdx].Behavior == "&macro_pause_for_release";
         signal = new SignalMacro(
             macro.Name,
             layerParam,
@@ -334,17 +347,18 @@ public static class SignalMacroScanner
         if (!name.StartsWith(prefix, StringComparison.Ordinal)) return null;
         var rest = name[prefix.Length..];
         var toIdx = rest.IndexOf("to", StringComparison.Ordinal);
-        if (toIdx <= 0) return null;
+        if (toIdx <= 0)
+        {
+            DiagnosticLog.Debug("SignalMacroScanner", $"Malformed macro_param marker '{name}' (no 'to' separator)");
+            return null;
+        }
         var fromStr = rest[..toIdx];
-        if (!int.TryParse(fromStr, out var from)) return null;
+        if (!int.TryParse(fromStr, out var from))
+        {
+            DiagnosticLog.Debug("SignalMacroScanner", $"Malformed macro_param marker '{name}' (non-integer from-index '{fromStr}')");
+            return null;
+        }
         return from - 1; // convert to 0-based
-    }
-
-    private static int IndexOf(IReadOnlyList<KeyBinding> bindings, string behavior)
-    {
-        for (int i = 0; i < bindings.Count; i++)
-            if (bindings[i].Behavior == behavior) return i;
-        return -1;
     }
 
     private static int FirstIndexOfAny(IReadOnlyList<KeyBinding> bindings, int startAt, params string[] targets)

@@ -128,10 +128,13 @@ public partial class MainWindow : Window
 
     private WindowEdge? GetResizeEdge(Point pos)
     {
+        // `<` on the near edge and `>=` on the far edge keeps both hot zones
+        // exactly ResizeEdge pixels wide. Using `>` symmetrically would leave
+        // a 1px dead band at pos == Bounds.Width - ResizeEdge.
         bool left   = pos.X < ResizeEdge;
-        bool right  = pos.X > Bounds.Width - ResizeEdge;
+        bool right  = pos.X >= Bounds.Width - ResizeEdge;
         bool top    = pos.Y < ResizeEdge;
-        bool bottom = pos.Y > Bounds.Height - ResizeEdge;
+        bool bottom = pos.Y >= Bounds.Height - ResizeEdge;
 
         if (left  && top)    return WindowEdge.NorthWest;
         if (right && top)    return WindowEdge.NorthEast;

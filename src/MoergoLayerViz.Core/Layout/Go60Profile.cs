@@ -116,6 +116,7 @@ public sealed class Go60Profile : IKeyboardProfile
         list.Add(new KeyPosition(idx++, 708, 360, RotationDegrees: -22, Description: "Right thumb 2", Hand: Hand.Right));
         list.Add(new KeyPosition(idx++, 780, 330, RotationDegrees: -10, Description: "Right thumb 3 (outer)", Hand: Hand.Right));
 
+        System.Diagnostics.Debug.Assert(idx == 60, $"Expected 60 keys, built {idx}");
         return list;
     }
 }

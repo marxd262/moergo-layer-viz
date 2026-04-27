@@ -60,7 +60,11 @@ public class SettingsService : ISettingsService
             return new UserSettings();
         }
 
-        if (parsed is null) return new UserSettings();
+        if (parsed is null)
+        {
+            DiagnosticLog.Warn("Settings", $"Deserialized null at {_filePath}; using defaults");
+            return new UserSettings();
+        }
 
         if (parsed.SchemaVersion > UserSettings.CurrentSchemaVersion)
         {

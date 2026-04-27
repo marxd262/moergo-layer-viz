@@ -420,6 +420,7 @@ public partial class MainWindowViewModel : ObservableObject
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(KeyboardStatusHint))]
     [NotifyPropertyChangedFor(nameof(StatusMessageFull))]
+    [NotifyPropertyChangedFor(nameof(ActiveLayerTintColor))]
     private IKeyboardProfile _selectedKeyboard = null!;
 
     /// <summary>Right-aligned status-bar hint: "DisplayName · N keys".</summary>
@@ -931,8 +932,16 @@ public partial class MainWindowViewModel : ObservableObject
     /// </summary>
     private void RebuildZmkLookup(Dictionary<string, SignalMacro> signalByName)
     {
-        _zmkLookup = new Dictionary<string, List<KeyViewModel>>(StringComparer.Ordinal);
-        if (_config is null) return;
+        // Build into a local then publish via a single reference assignment.
+        // OnKeyObservedFromHook reads _zmkLookup from the hook thread; if we
+        // populated the field in place, hook callbacks landing mid-rebuild
+        // would observe an empty / half-built dict and miss highlights.
+        var next = new Dictionary<string, List<KeyViewModel>>(StringComparer.Ordinal);
+        if (_config is null)
+        {
+            _zmkLookup = next;
+            return;
+        }
         var layerIdx = ActiveLayerIndex;
         if (layerIdx < 0 || layerIdx >= _config.Layers.Count) layerIdx = 0;
         for (int i = 0; i < Keys.Count; i++)
@@ -942,11 +951,12 @@ public partial class MainWindowViewModel : ObservableObject
             var press = ExtractEmittedKeypress(binding, signal);
             if (press is null) continue;
             var key = BuildLookupKey(press.Value.Mods, press.Value.Code);
-            if (!_zmkLookup.TryGetValue(key, out var list))
-                _zmkLookup[key] = list = new List<KeyViewModel>();
+            if (!next.TryGetValue(key, out var list))
+                next[key] = list = new List<KeyViewModel>();
             list.Add(Keys[i]);
         }
-        DiagnosticLog.Debug("Highlight", $"lookup rebuilt layer={layerIdx} keys=[{string.Join(",", _zmkLookup.Keys)}]");
+        _zmkLookup = next;
+        DiagnosticLog.Debug("Highlight", $"lookup rebuilt layer={layerIdx} keys=[{string.Join(",", next.Keys)}]");
     }
 
     /// <summary>
@@ -1266,6 +1276,9 @@ public partial class MainWindowViewModel : ObservableObject
     {
         if (_keyEventSource is not null) return;
         if (_hookProvider is null) return;
+        // Re-arm the accessibility-prompt latch on every start so a later
+        // failure (perms revoked at runtime, hook restart) can prompt again.
+        _accessibilityDialogShown = false;
         try
         {
             var source = new SharpHookKeyEventSource(_hookProvider);
@@ -1346,13 +1359,20 @@ public partial class MainWindowViewModel : ObservableObject
                 lock (_pendingModHighlights) _pendingModHighlights.Add(cts);
                 _ = Task.Delay(ModifierGraceMs, cts.Token).ContinueWith(t =>
                 {
-                    if (t.IsCanceled) return;
-                    Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                    // Remove inside the lock so the cancel path's foreach can
+                    // never see a disposed instance. Dispose unconditionally —
+                    // both the elapsed and cancelled branches need it, and the
+                    // earlier cancel-path-leaks-CTS bug came from skipping it.
+                    bool stillPending;
+                    lock (_pendingModHighlights) stillPending = _pendingModHighlights.Remove(cts);
+                    if (stillPending && !t.IsCanceled)
                     {
-                        lock (_pendingModHighlights) _pendingModHighlights.Remove(cts);
-                        foreach (var vm in targets) PulseKeyPress(vm);
-                        cts.Dispose();
-                    });
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            foreach (var vm in targets) PulseKeyPress(vm);
+                        });
+                    }
+                    cts.Dispose();
                 }, TaskScheduler.Default);
             }
             else

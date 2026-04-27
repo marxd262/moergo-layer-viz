@@ -14,10 +14,11 @@ namespace MoergoLayerViz.App.ViewModels;
 /// state and persistence. Bindings here are TwoWay so live tweaks update
 /// the board immediately.
 /// </summary>
-public partial class SettingsViewModel : ObservableObject
+public partial class SettingsViewModel : ObservableObject, IDisposable
 {
     private readonly ISettingsService _settingsService;
     private readonly MainWindowViewModel _mainViewModel;
+    private bool _disposed;
 
     public SettingsViewModel(ISettingsService settingsService, MainWindowViewModel mainViewModel)
     {
@@ -27,6 +28,22 @@ public partial class SettingsViewModel : ObservableObject
         _mainViewModel.Layers.CollectionChanged += OnLayersCollectionChanged;
         _mainViewModel.ManualLayerSignalsChanged += RebuildLayerEntries;
         RebuildLayerEntries();
+    }
+
+    /// <summary>
+    /// Detaches the long-lived <see cref="MainWindowViewModel"/> event hooks
+    /// so this VM (and its window's whole DataContext graph) becomes
+    /// collectible. Settings reopens build a fresh instance every time, so
+    /// without this every closed-then-reopened window leaked a zombie VM
+    /// still firing on every property change of the main VM.
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed) return;
+        _disposed = true;
+        _mainViewModel.PropertyChanged -= OnMainPropertyChanged;
+        _mainViewModel.Layers.CollectionChanged -= OnLayersCollectionChanged;
+        _mainViewModel.ManualLayerSignalsChanged -= RebuildLayerEntries;
     }
 
     public double BackgroundOpacity
