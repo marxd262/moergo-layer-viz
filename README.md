@@ -8,6 +8,39 @@ It's read-only. No firmware flashing, no keymap editing. The app watches the key
 
 ![MoergoLayerViz overlay following the active layer of a Glove80 keyboard](docs/screenshots/1.png)
 
+## Install & run
+
+Pre-built zips for each tagged release are on the [latest release](../../releases/latest) page. Each release ships:
+
+- `MoergoLayerViz-<version>-windows-x64.zip` — Windows 10/11, x64.
+- `MoergoLayerViz-<version>-macos-arm64.zip` — Apple Silicon Macs (M-series).
+- `MoergoLayerViz-<version>-macos-x64.zip` — Intel Macs.
+
+If you'd rather build it yourself, skip ahead to [Build from source](#build-from-source).
+
+### Windows
+
+1. Download `MoergoLayerViz-<version>-windows-x64.zip` from [Releases](../../releases/latest) and unzip.
+2. Run `MoergoLayerViz.App.exe`.
+
+The first launch may show a SmartScreen warning ("Windows protected your PC") because the binary isn't signed by an MS-trusted publisher. Click **More info → Run anyway**. No special permissions are needed beyond that — Windows allows the global keyboard hook without a user grant.
+
+### macOS
+
+1. Download `MoergoLayerViz-<version>-macos-arm64.zip` (or `-macos-x64.zip` on Intel) from [Releases](../../releases/latest).
+2. Extract the zip and move `MoergoLayerViz.app` to `/Applications`.
+3. The bundle is ad-hoc signed, so Gatekeeper will block the first launch. Clear the quarantine attribute once:
+
+   ```bash
+   xattr -cr /Applications/MoergoLayerViz.app
+   ```
+
+4. Open the app. On first launch it shows an **Accessibility required** dialog — click **Open Settings** (or go to **System Settings → Privacy & Security → Accessibility**) and enable **Moergo Layer Viz**. Quit and re-launch.
+
+> macOS 26+ doesn't always persist the Accessibility grant across system upgrades for ad-hoc-signed apps. If the overlay stops following layers after a major OS update, remove the stale entry under Accessibility and grant it again. For a setup where the grant survives upgrades, build from source with a self-signed Keychain cert — see [macOS development build](#macos-development-build).
+
+---
+
 ## Screenshots
 
 | | |
@@ -90,41 +123,6 @@ Author the macros directly in Moergo's editor following one of the shapes above.
 - Load the JSON in MoergoLayerViz. The app auto-detects whether the layout is GO60 or Glove80 by binding count and switches profile automatically.
 - In **Settings**, enable **Live highlighting** and **Auto layer switch** to start tracking.
 - Default global show/hide hotkey: **F12** (configurable in Settings → General).
-
----
-
-## Install & run
-
-Pre-built zips for each tagged release are on the [latest release](../../releases/latest) page. Each release ships:
-
-- `MoergoLayerViz-<version>-windows-x64.zip` — Windows 10/11, x64.
-- `MoergoLayerViz-<version>-macos-arm64.zip` — Apple Silicon Macs (M-series).
-- `MoergoLayerViz-<version>-macos-x64.zip` — Intel Macs.
-
-If you'd rather build it yourself, skip ahead to [Build from source](#build-from-source).
-
-### Windows
-
-1. Download `MoergoLayerViz-<version>-windows-x64.zip` from [Releases](../../releases/latest) and unzip.
-2. Run `MoergoLayerViz.App.exe`.
-
-The first launch may show a SmartScreen warning ("Windows protected your PC") because the binary isn't signed by an MS-trusted publisher. Click **More info → Run anyway**. No special permissions are needed beyond that — Windows allows the global keyboard hook without a user grant.
-
-### macOS
-
-1. Download `MoergoLayerViz-<version>-macos-arm64.zip` (or `-macos-x64.zip` on Intel) from [Releases](../../releases/latest).
-2. Extract the zip and move `MoergoLayerViz.app` to `/Applications`.
-3. The bundle is ad-hoc signed, so Gatekeeper will block the first launch. Clear the quarantine attribute once:
-
-   ```bash
-   xattr -cr /Applications/MoergoLayerViz.app
-   ```
-
-4. Open the app. On first launch it shows an **Accessibility required** dialog — click **Open Settings** (or go to **System Settings → Privacy & Security → Accessibility**) and enable **Moergo Layer Viz**. Quit and re-launch.
-
-> macOS 26+ doesn't always persist the Accessibility grant across system upgrades for ad-hoc-signed apps. If the overlay stops following layers after a major OS update, remove the stale entry under Accessibility and grant it again. For a setup where the grant survives upgrades, build from source with a self-signed Keychain cert — see [macOS development build](#macos-development-build).
-
----
 
 ## Build from source
 
