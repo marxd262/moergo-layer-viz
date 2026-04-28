@@ -101,8 +101,11 @@ xattr -cr "$APP_BUNDLE" || true
 #
 # NOTE: Do NOT pass --options runtime — hardened runtime enforces Library
 # Validation, which blocks loading libhostfxr.dylib (different Team IDs).
+# `security find-certificate` exits 44 (errSecItemNotFound) when the cert
+# is missing — e.g. on CI. The trailing `|| true` keeps `set -euo pipefail`
+# from killing the script before we reach the ad-hoc fallback below.
 SIGN_CERT_HASH=$(security find-certificate -c "MoergoLayerViz Local Dev" -Z 2>/dev/null \
-    | awk '/SHA-1 hash/ {print $NF; exit}')
+    | awk '/SHA-1 hash/ {print $NF; exit}' || true)
 if [[ -n "$SIGN_CERT_HASH" ]]; then
     echo "  Using cert SHA-1: $SIGN_CERT_HASH"
     codesign --force --deep --sign "$SIGN_CERT_HASH" "$APP_BUNDLE" >/dev/null
