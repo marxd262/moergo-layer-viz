@@ -9,6 +9,7 @@
 #   scripts/build-mac-app.sh -c Debug             # Debug publish
 #   scripts/build-mac-app.sh -r osx-x64           # Cross-publish for Intel
 #   scripts/build-mac-app.sh -c Release -r osx-arm64
+#   scripts/build-mac-app.sh -v 1.2.3             # Stamp version into binary
 #
 # Output: <repo>/src/MoergoLayerViz.App/bin/macos-bundle/MoergoLayerViz.app
 
@@ -16,12 +17,14 @@ set -euo pipefail
 
 CONFIG=Release
 RID=""
+VERSION=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     -c) CONFIG="$2"; shift 2 ;;
     -r) RID="$2"; shift 2 ;;
+    -v) VERSION="$2"; shift 2 ;;
     -h|--help)
-      echo "Usage: $0 [-c Debug|Release] [-r osx-arm64|osx-x64]"
+      echo "Usage: $0 [-c Debug|Release] [-r osx-arm64|osx-x64] [-v <version>]"
       exit 0
       ;;
     *)
@@ -47,10 +50,16 @@ BUNDLE_ROOT="$REPO_ROOT/src/MoergoLayerViz.App/bin/macos-bundle"
 APP_BUNDLE="$BUNDLE_ROOT/MoergoLayerViz.app"
 INFO_PLIST="$REPO_ROOT/build/macos/Info.plist"
 
-echo "[1/4] Publishing ($CONFIG, $RID, self-contained)..."
+VERSION_ARGS=()
+if [[ -n "$VERSION" ]]; then
+    VERSION_ARGS=(-p:Version="$VERSION")
+fi
+
+echo "[1/4] Publishing ($CONFIG, $RID, self-contained${VERSION:+, v$VERSION})..."
 dotnet publish "$PROJECT" \
   -c "$CONFIG" -r "$RID" --self-contained true \
   -p:PublishSingleFile=false \
+  "${VERSION_ARGS[@]}" \
   --nologo
 
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister

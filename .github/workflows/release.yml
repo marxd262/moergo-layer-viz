@@ -100,7 +100,7 @@ jobs:
           # CI has no "MoergoLayerViz Local Dev" Keychain cert; the script
           # falls back to ad-hoc signing automatically. End users may need
           # to re-grant Accessibility after upgrades — see README macOS notes.
-          scripts/build-mac-app.sh -c Release -r ${{ matrix.rid }}
+          scripts/build-mac-app.sh -c Release -r ${{ matrix.rid }} -v ${{ steps.ver.outputs.version }}
 
       - name: Package zip (ditto)
         run: |
