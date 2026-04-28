@@ -5,24 +5,40 @@
 # users see "Moergo Layer Viz" and an explanation instead of "dotnet".
 #
 # Usage:
-#   scripts/build-mac-app.sh            # Release build for host arch
-#   scripts/build-mac-app.sh -c Debug   # Debug publish
+#   scripts/build-mac-app.sh                      # Release build for host arch
+#   scripts/build-mac-app.sh -c Debug             # Debug publish
+#   scripts/build-mac-app.sh -r osx-x64           # Cross-publish for Intel
+#   scripts/build-mac-app.sh -c Release -r osx-arm64
 #
 # Output: <repo>/src/MoergoLayerViz.App/bin/macos-bundle/MoergoLayerViz.app
 
 set -euo pipefail
 
 CONFIG=Release
-if [[ "${1:-}" == "-c" && -n "${2:-}" ]]; then
-  CONFIG="$2"
-fi
+RID=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -c) CONFIG="$2"; shift 2 ;;
+    -r) RID="$2"; shift 2 ;;
+    -h|--help)
+      echo "Usage: $0 [-c Debug|Release] [-r osx-arm64|osx-x64]"
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $1" >&2
+      exit 1
+      ;;
+  esac
+done
 
-ARCH=$(uname -m)
-case "$ARCH" in
-  arm64) RID="osx-arm64" ;;
-  x86_64) RID="osx-x64" ;;
-  *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;;
-esac
+if [[ -z "$RID" ]]; then
+  ARCH=$(uname -m)
+  case "$ARCH" in
+    arm64) RID="osx-arm64" ;;
+    x86_64) RID="osx-x64" ;;
+    *) echo "Unsupported arch: $ARCH" >&2; exit 1 ;;
+  esac
+fi
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 PROJECT="$REPO_ROOT/src/MoergoLayerViz.App/MoergoLayerViz.App.csproj"

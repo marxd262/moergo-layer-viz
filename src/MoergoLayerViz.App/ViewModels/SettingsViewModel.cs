@@ -1,8 +1,12 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
+using System.Net.Http;
+using System.Reflection;
+using System.Text.Json;
 using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
 using MoergoLayerViz.App.Localization;
 using MoergoLayerViz.Core.Settings;
 
@@ -219,6 +223,100 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
                 _mainViewModel.SetManualLayerSignal);
 
             LayerEntries.Add(new LayerSettingsEntry(colorEntry, signalEntry));
+        }
+    }
+
+    // ── Version & Update Check ────────────────────────────────────────────
+
+    private const string GitHubReleasesApi = "https://api.github.com/repos/ovandongen/moergo-layer-viz/releases/latest";
+    private const string GitHubReleasesPage = "https://github.com/ovandongen/moergo-layer-viz/releases/latest";
+
+    // Static singleton: this VM is recreated on every Settings reopen, but
+    // the HTTP client should outlive the window — disposing per-window would
+    // tear down the underlying socket pool.
+    private static readonly HttpClient _httpClient = new();
+
+    /// <summary>
+    /// Display version pulled from <see cref="AssemblyInformationalVersionAttribute"/>.
+    /// Strips the <c>+commitHash</c> suffix .NET source-link adds, so a CI build
+    /// stamped <c>0.1.0+abc1234</c> renders as <c>v0.1.0</c>.
+    /// </summary>
+    public string AppVersion
+    {
+        get
+        {
+            var info = Assembly.GetExecutingAssembly()
+                .GetCustomAttribute<AssemblyInformationalVersionAttribute>()?.InformationalVersion;
+            if (info is not null)
+            {
+                var plus = info.IndexOf('+');
+                return "v" + (plus >= 0 ? info[..plus] : info);
+            }
+            return "v" + (Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "?");
+        }
+    }
+
+    [ObservableProperty]
+    private string? _updateMessage;
+
+    [ObservableProperty]
+    private bool _isCheckingForUpdates;
+
+    /// <summary>URL the update-link TextBlock opens. Null when no update is available.</summary>
+    public string? UpdateUrl { get; private set; }
+
+    [RelayCommand]
+    private async Task CheckForUpdatesAsync()
+    {
+        IsCheckingForUpdates = true;
+        UpdateMessage = null;
+        UpdateUrl = null;
+
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Get, GitHubReleasesApi);
+            // GitHub's API rejects requests without a User-Agent.
+            request.Headers.Add("User-Agent", "MoergoLayerViz");
+
+            var response = await _httpClient.SendAsync(request);
+            response.EnsureSuccessStatusCode();
+
+            using var doc = await JsonDocument.ParseAsync(await response.Content.ReadAsStreamAsync());
+            var tagName = doc.RootElement.GetProperty("tag_name").GetString();
+            var htmlUrl = doc.RootElement.GetProperty("html_url").GetString();
+
+            if (tagName is null)
+            {
+                UpdateMessage = Loc.Instance["Settings_UpdateCheckFailed"];
+                return;
+            }
+
+            var latestStr = tagName.TrimStart('v');
+            var currentStr = AppVersion.TrimStart('v');
+
+            // Version.TryParse only accepts Major.Minor[.Build[.Revision]] —
+            // a dev build stamped "0.0.0-dev" fails to parse, so we fall
+            // through to the up-to-date branch silently. Real CI builds set
+            // -p:Version=<semver> and parse cleanly.
+            if (Version.TryParse(latestStr, out var latest) &&
+                Version.TryParse(currentStr, out var current) &&
+                latest > current)
+            {
+                UpdateMessage = Loc.Instance.Format("Settings_UpdateAvailable", tagName);
+                UpdateUrl = htmlUrl ?? GitHubReleasesPage;
+            }
+            else
+            {
+                UpdateMessage = Loc.Instance["Settings_UpToDate"];
+            }
+        }
+        catch
+        {
+            UpdateMessage = Loc.Instance["Settings_UpdateCheckFailed"];
+        }
+        finally
+        {
+            IsCheckingForUpdates = false;
         }
     }
 }

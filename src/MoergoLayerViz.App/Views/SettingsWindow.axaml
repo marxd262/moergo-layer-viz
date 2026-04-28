@@ -13,7 +13,35 @@
         <conv:HexColorToBrushConverter x:Key="HexToBrush" />
     </Window.Resources>
 
-    <TabControl Margin="8">
+    <DockPanel Margin="8">
+
+        <!-- Version & update-check footer: docked at the bottom so it stays
+             visible across both tabs and any future tabs. The check button
+             swaps for an italic "Checking…" label while the request is in
+             flight; the result text is clickable when an update is found
+             (the link click handler lives in the code-behind because
+             TextBlock has no built-in command for PointerPressed). -->
+        <Border DockPanel.Dock="Bottom" Height="1" Background="#313244" Margin="0,8,0,0" />
+        <StackPanel DockPanel.Dock="Bottom" Orientation="Horizontal" Margin="8,8,8,4" Spacing="8">
+            <TextBlock Text="{Binding AppVersion}" Foreground="#6C7086" FontSize="11"
+                       VerticalAlignment="Center" />
+            <Button Content="{Binding [Settings_CheckForUpdates], Source={StaticResource Loc}}"
+                    Command="{Binding CheckForUpdatesCommand}"
+                    IsVisible="{Binding !IsCheckingForUpdates}"
+                    Padding="4,1" FontSize="11" Background="Transparent"
+                    Foreground="#89B4FA" BorderThickness="0" Cursor="Hand" />
+            <TextBlock Text="{Binding [Settings_Checking], Source={StaticResource Loc}}"
+                       IsVisible="{Binding IsCheckingForUpdates}"
+                       Foreground="#6C7086" FontSize="11" FontStyle="Italic"
+                       VerticalAlignment="Center" />
+            <TextBlock Text="{Binding UpdateMessage}" Foreground="#A6E3A1" FontSize="11"
+                       VerticalAlignment="Center" TextWrapping="Wrap"
+                       IsVisible="{Binding UpdateMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                       Cursor="Hand" TextDecorations="Underline"
+                       Name="UpdateLink" PointerPressed="OnUpdateLinkClick" />
+        </StackPanel>
+
+        <TabControl>
 
         <!-- General tab: app-wide settings (not scoped per layer). -->
         <TabItem Header="{Binding [Settings_Tab_General], Source={StaticResource Loc}}">
@@ -171,6 +199,8 @@
             </ScrollViewer>
         </TabItem>
 
-    </TabControl>
+        </TabControl>
+
+    </DockPanel>
 
 </Window>
