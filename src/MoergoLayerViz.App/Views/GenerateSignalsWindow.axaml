@@ -4,8 +4,8 @@
         x:Class="MoergoLayerViz.App.Views.GenerateSignalsWindow"
         x:DataType="vm:GenerateSignalsViewModel"
         Title="{Binding [Title_GenerateSignals], Source={StaticResource Loc}}"
-        Width="560" Height="600"
-        MinWidth="460" MinHeight="420"
+        Width="560" Height="720"
+        MinWidth="460" MinHeight="480"
         WindowStartupLocation="CenterOwner">
 
     <ScrollViewer VerticalScrollBarVisibility="Auto">
@@ -25,6 +25,47 @@
                            FontSize="13" FontWeight="SemiBold" Foreground="#CDD6F4" />
                 <TextBlock Text="{Binding LoadedLayoutDisplay}"
                            Foreground="#A6E3A1" FontSize="12" />
+            </StackPanel>
+
+            <!-- Layer selection -->
+            <StackPanel Spacing="6" IsVisible="{Binding Layers.Count}">
+                <TextBlock Text="{Binding [Generate_LayersHeading], Source={StaticResource Loc}}"
+                           FontSize="13" FontWeight="SemiBold" Foreground="#CDD6F4" />
+                <TextBlock Text="{Binding [Generate_LayersHint], Source={StaticResource Loc}}"
+                           Foreground="#6C7086" FontSize="11" TextWrapping="Wrap" />
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button Content="{Binding [Generate_SelectAll], Source={StaticResource Loc}}"
+                            Command="{Binding SelectAllCommand}"
+                            Padding="10,3" FontSize="11" />
+                    <Button Content="{Binding [Generate_ClearAll], Source={StaticResource Loc}}"
+                            Command="{Binding ClearSelectionCommand}"
+                            Padding="10,3" FontSize="11" />
+                </StackPanel>
+                <Border BorderBrush="#313244" BorderThickness="1" CornerRadius="4"
+                        Background="#181825">
+                    <ScrollViewer MaxHeight="220" VerticalScrollBarVisibility="Auto">
+                        <ItemsControl ItemsSource="{Binding Layers}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="8,3">
+                                        <CheckBox Grid.Column="0"
+                                                  IsChecked="{Binding IsSelected, Mode=TwoWay}" />
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Label}"
+                                                   Foreground="#CDD6F4" FontSize="12"
+                                                   VerticalAlignment="Center"
+                                                   Margin="6,0,0,0" />
+                                        <TextBlock Grid.Column="2"
+                                                   Text="{Binding ProjectedFkey}"
+                                                   Foreground="#94E2D5" FontSize="11"
+                                                   FontFamily="Consolas, Menlo, monospace"
+                                                   VerticalAlignment="Center" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
+                </Border>
             </StackPanel>
 
             <!-- Start Fkey -->

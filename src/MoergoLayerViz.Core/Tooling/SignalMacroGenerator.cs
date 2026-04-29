@@ -33,7 +33,17 @@ public static class SignalMacroGenerator
     /// <summary>Highest Fkey we'll assign (ZMK's <c>F24</c>).</summary>
     public const int MaxFkey = 24;
 
-    public sealed record GenerateOptions(int StartFkey = MinFkey);
+    /// <summary>
+    /// Generation options. <paramref name="LayerIndices"/> selects which
+    /// layers to emit per-layer entries for; pass <c>null</c> to include
+    /// every layer (back-compat default). Selected layers are packed
+    /// consecutively into the Fkey window starting at
+    /// <paramref name="StartFkey"/>, so a 12-layer selection always fits
+    /// regardless of the original layer indices.
+    /// </summary>
+    public sealed record GenerateOptions(
+        int StartFkey = MinFkey,
+        IReadOnlySet<int>? LayerIndices = null);
 
     public sealed record GeneratedItem(string Name, string Kind, int? LayerIndex, int? Fkey);
 
@@ -83,14 +93,30 @@ public static class SignalMacroGenerator
         TryAddMacro(macrosArray, existingMacroNames, BuildMoLayerMacro(),
             "&Molayer", "parametric-macro", null, null, added, skipped);
 
-        // 2. Per-layer fixed mo-macro + matching hold-tap. The base layer is included
-        // so jump-to-base bindings can be tracked back to base.
+        // Warn for any caller-supplied indices that fall outside the layout —
+        // silently dropping them would hide drift between a stale selection
+        // and a re-imported keymap.
+        if (options.LayerIndices is { } picked)
+        {
+            foreach (var bad in picked.Where(i => i < 0 || i >= layerNames.Count).OrderBy(i => i))
+                warnings.Add($"Layer index {bad} is outside the layout (0..{layerNames.Count - 1}) — skipped.");
+        }
+
+        // 2. Per-layer fixed mo-macro + matching hold-tap, packed into the Fkey
+        // window in original layer order. With LayerIndices null we include every
+        // layer (back-compat); the base layer is included so jump-to-base bindings
+        // (e.g. `&Tolayer 0 F13`) can be tracked back to base.
+        int selectionPosition = 0;
         for (int layerIdx = 0; layerIdx < layerNames.Count; layerIdx++)
         {
+            if (options.LayerIndices is { } sel && !sel.Contains(layerIdx))
+                continue;
+
             var rawName = layerNames[layerIdx];
             var slug = SanitizeLayerName(rawName, layerIdx);
 
-            int fkey = options.StartFkey + layerIdx;
+            int fkey = options.StartFkey + selectionPosition;
+            selectionPosition++;
 
             if (fkey > MaxFkey)
             {

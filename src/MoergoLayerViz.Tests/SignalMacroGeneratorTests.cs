@@ -205,6 +205,80 @@ public class SignalMacroGeneratorTests
         Assert.Contains("&mo_cursor_f15signal", names);
     }
 
+    [Fact]
+    public void Generate_LayerIndices_SubsetPacksFkeysConsecutively()
+    {
+        // Picking layers 0 and 2 out of [Base, Symbol, Cursor] should produce
+        // entries on F13 and F14 — consecutive packing, not F13/F15. Symbol is
+        // entirely absent from the output.
+        var picked = new HashSet<int> { 0, 2 };
+        var result = SignalMacroGenerator.Generate(MinimalJson,
+            new SignalMacroGenerator.GenerateOptions(StartFkey: 13, LayerIndices: picked));
+
+        var names = result.Added.Select(a => a.Name).ToList();
+        Assert.Contains("&mo_base_f13signal", names);
+        Assert.Contains("&ht_base", names);
+        Assert.Contains("&mo_cursor_f14signal", names);
+        Assert.Contains("&ht_cursor", names);
+        Assert.DoesNotContain(names, n => n.StartsWith("&mo_symbol", StringComparison.Ordinal));
+        Assert.DoesNotContain("&ht_symbol", names);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void Generate_LayerIndices_NullMatchesAllLayersBehavior()
+    {
+        var withNull = SignalMacroGenerator.Generate(MinimalJson,
+            new SignalMacroGenerator.GenerateOptions(StartFkey: 13, LayerIndices: null));
+        var defaulted = SignalMacroGenerator.Generate(MinimalJson,
+            new SignalMacroGenerator.GenerateOptions(StartFkey: 13));
+
+        Assert.Equal(defaulted.Added.Select(a => a.Name), withNull.Added.Select(a => a.Name));
+    }
+
+    [Fact]
+    public void Generate_LayerIndices_EmptySetEmitsOnlyParametricMacros()
+    {
+        var result = SignalMacroGenerator.Generate(MinimalJson,
+            new SignalMacroGenerator.GenerateOptions(StartFkey: 13, LayerIndices: new HashSet<int>()));
+
+        var names = result.Added.Select(a => a.Name).ToList();
+        Assert.Equal(new[] { "&Tolayer", "&Molayer" }, names);
+        Assert.Empty(result.Warnings);
+    }
+
+    [Fact]
+    public void Generate_LayerIndices_OutOfRangeWarnsAndDrops()
+    {
+        var picked = new HashSet<int> { 0, 99 };
+        var result = SignalMacroGenerator.Generate(MinimalJson,
+            new SignalMacroGenerator.GenerateOptions(StartFkey: 13, LayerIndices: picked));
+
+        Assert.Contains(result.Added, a => a.Name == "&mo_base_f13signal");
+        Assert.DoesNotContain(result.Added, a => a.LayerIndex == 99);
+        Assert.Single(result.Warnings);
+        Assert.Contains("99", result.Warnings[0]);
+    }
+
+    [Fact]
+    public void Generate_LayerIndices_FillsFkeyWindowExactly()
+    {
+        // 13 layers picked at StartFkey=13 packs L0..L11 into F13..F24 and
+        // warns once for the 13th overflowing to F25. With the old per-layer
+        // mapping the same set would have warned multiple times.
+        var layerNames = string.Join(",", Enumerable.Range(0, 13).Select(i => $"\"L{i}\""));
+        var layers = string.Join(",", Enumerable.Repeat("[{\"value\":\"&trans\"}]", 13));
+        var json = $$"""{ "keyboard": "go60", "layer_names": [{{layerNames}}], "layers": [{{layers}}] }""";
+
+        var picked = new HashSet<int>(Enumerable.Range(0, 13));
+        var result = SignalMacroGenerator.Generate(json,
+            new SignalMacroGenerator.GenerateOptions(StartFkey: 13, LayerIndices: picked));
+
+        Assert.Contains(result.Added, a => a.Name == "&mo_l11_f24signal");
+        Assert.DoesNotContain(result.Added, a => a.Name.StartsWith("&mo_l12", StringComparison.Ordinal));
+        Assert.Single(result.Warnings);
+    }
+
     [Theory]
     [InlineData("Symbol", "symbol")]
     [InlineData("Cursor Group", "cursor_group")]

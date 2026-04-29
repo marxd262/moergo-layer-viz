@@ -100,6 +100,16 @@ Construction:
 2. Walk every layer binding. For each binding whose behavior is in the
    lookup, resolve `(targetLayer, signalKeycode)` via the helper methods
    and record the mapping. Last writer wins on conflicts.
+3. **Fkey filter.** Only resolved keycodes in the F1–F24 range enter the
+   table. Parametric homerow-mod macros (e.g.
+   `&HRM_left_pinky_hold LGUI`) match the same `&kp <code> + &mo <layer>`
+   shape as a routed signal macro, so they classify as signal macros at
+   the macro-definition level — but at the use-site they emit modifier
+   keycodes, not Fkeys. Filtering at resolution time keeps the live
+   tracker from chasing modifiers and keeps Settings → Layers from
+   showing a bogus per-layer binding for those layers (they correctly
+   appear as `(none)`). Dropped resolutions are written to the
+   diagnostic log under the `LayerSignalTable` tag.
 
 The resulting table is consumed by `HotkeyLayerTracker`: when the OS
 fires a keypress matching a known signal keycode, the tracker activates

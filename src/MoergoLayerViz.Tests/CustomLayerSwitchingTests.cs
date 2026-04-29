@@ -124,6 +124,55 @@ public class CustomLayerSwitchingTests
     }
 
     [Fact]
+    public void LayerSignalTable_IgnoresParametricSignalMacroInvokedWithNonFkey()
+    {
+        // Homerow-mod macros (e.g. &HRM_left_pinky_hold A) match the signal
+        // shape — &kp <code> + &mo <layer> with macro_pause_for_release —
+        // but the user passes modifier keycodes, not Fkeys. Those entries
+        // must not enter the signal table; otherwise Settings shows a
+        // bogus per-layer "binding" and the live tracker chases modifiers.
+        const string json = """
+        {
+          "keyboard": "go60",
+          "layer_names": ["Base", "Symbol"],
+          "layers": [
+            [
+              { "value": "&hrm_hold", "params": [ { "value": "LGUI" } ] },
+              { "value": "&hrm_hold", "params": [ { "value": "F20" } ] }
+            ],
+            [ { "value": "&trans" }, { "value": "&trans" } ]
+          ],
+          "macros": [
+            {
+              "name": "&hrm_hold",
+              "description": "",
+              "bindings": [
+                { "value": "&macro_press" },
+                { "value": "&macro_param_1to1" },
+                { "value": "&kp", "params": [ { "value": "code" } ] },
+                { "value": "&mo", "params": [ { "value": 1 } ] },
+                { "value": "&macro_pause_for_release" },
+                { "value": "&macro_release" },
+                { "value": "&macro_param_1to1" },
+                { "value": "&kp", "params": [ { "value": "code" } ] },
+                { "value": "&mo", "params": [ { "value": 1 } ] }
+              ],
+              "params": [ "code" ]
+            }
+          ]
+        }
+        """;
+
+        var config = MoergoJsonLoader.LoadFromJson(json);
+        var signals = SignalMacroScanner.DetectSignalMacros(config);
+        var table = LayerSignalTable.Build(config, signals);
+
+        Assert.Null(table.TryResolve("LGUI"));
+        Assert.NotNull(table.TryResolve("F20"));
+        Assert.Equal(1, table.TryResolve("F20")!.TargetLayer);
+    }
+
+    [Fact]
     public void FindUntrackableLayerSwitches_ExcludesSignalBackedHoldTaps()
     {
         // None of the &ht_* hold-taps in the fixture should appear as

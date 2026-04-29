@@ -1,5 +1,8 @@
 using System.Collections.ObjectModel;
+using System.Globalization;
 using System.IO;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoergoLayerViz.App.Localization;
@@ -26,7 +29,22 @@ public partial class GenerateSignalsViewModel : ObservableObject
         _loadedLayoutDisplay = string.IsNullOrEmpty(loadedLayoutPath)
             ? Loc.Instance["Generate_NoLayoutLoaded"]
             : Path.GetFileName(loadedLayoutPath);
-        GenerateCommand = new AsyncRelayCommand(GenerateAsync, () => !IsBusy && !string.IsNullOrEmpty(_loadedPath));
+
+        // Commands must exist before the first RecomputeProjections call —
+        // RecomputeProjections sets SelectedCount, which fires the partial
+        // OnSelectedCountChanged handler that pokes GenerateCommand.
+        GenerateCommand = new AsyncRelayCommand(GenerateAsync,
+            () => !IsBusy && !string.IsNullOrEmpty(_loadedPath) && SelectedCount > 0);
+        SelectAllCommand = new RelayCommand(() => SetAllSelected(true));
+        ClearSelectionCommand = new RelayCommand(() => SetAllSelected(false));
+
+        foreach (var (name, idx) in ReadLayerNames(loadedLayoutPath).Select((n, i) => (n, i)))
+        {
+            var item = new LayerSelectionItem(idx, name);
+            item.PropertyChanged += OnLayerItemChanged;
+            Layers.Add(item);
+        }
+        RecomputeProjections();
     }
 
     /// <summary>Set by App.axaml.cs — opens a save-file picker, returns the chosen path or null.</summary>
@@ -52,13 +70,79 @@ public partial class GenerateSignalsViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasResult;
 
+    [ObservableProperty]
+    private int _selectedCount;
+
+    public ObservableCollection<LayerSelectionItem> Layers { get; } = new();
     public ObservableCollection<string> AddedItems { get; } = new();
     public ObservableCollection<string> SkippedItems { get; } = new();
     public ObservableCollection<string> Warnings { get; } = new();
 
     public IAsyncRelayCommand GenerateCommand { get; }
+    public IRelayCommand SelectAllCommand { get; }
+    public IRelayCommand ClearSelectionCommand { get; }
 
     partial void OnIsBusyChanged(bool value) => GenerateCommand.NotifyCanExecuteChanged();
+    partial void OnSelectedCountChanged(int value) => GenerateCommand.NotifyCanExecuteChanged();
+    partial void OnStartFkeyChanged(int value) => RecomputeProjections();
+
+    private void OnLayerItemChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(LayerSelectionItem.IsSelected))
+            RecomputeProjections();
+    }
+
+    private void SetAllSelected(bool selected)
+    {
+        foreach (var item in Layers) item.IsSelected = selected;
+    }
+
+    /// <summary>
+    /// Walks <see cref="Layers"/> in original order and assigns each selected
+    /// layer the next Fkey starting at <see cref="StartFkey"/>. Unselected and
+    /// over-F24 layers get the placeholder. Also keeps <see cref="SelectedCount"/>
+    /// in sync so the Generate button enable-state reflects the selection.
+    /// </summary>
+    private void RecomputeProjections()
+    {
+        var placeholder = Loc.Instance["Generate_LayerOutOfRange"];
+        int position = 0;
+        int selected = 0;
+        foreach (var item in Layers)
+        {
+            if (!item.IsSelected)
+            {
+                item.ProjectedFkey = placeholder;
+                continue;
+            }
+            selected++;
+            int fkey = StartFkey + position;
+            position++;
+            item.ProjectedFkey = fkey > SignalMacroGenerator.MaxFkey
+                ? placeholder
+                : "F" + fkey.ToString(CultureInfo.InvariantCulture);
+        }
+        SelectedCount = selected;
+    }
+
+    private static List<string> ReadLayerNames(string? path)
+    {
+        var names = new List<string>();
+        if (string.IsNullOrEmpty(path)) return names;
+        try
+        {
+            var json = File.ReadAllText(path);
+            if (JsonNode.Parse(json) is JsonObject obj && obj["layer_names"] is JsonArray arr)
+            {
+                foreach (var node in arr) names.Add(node?.GetValue<string>() ?? "");
+            }
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Warn("GenerateSignals", $"could not pre-read layer names: {ex.Message}");
+        }
+        return names;
+    }
 
     private async Task GenerateAsync()
     {
@@ -84,11 +168,13 @@ public partial class GenerateSignalsViewModel : ObservableObject
                 return;
             }
 
+            var picked = new HashSet<int>(Layers.Where(l => l.IsSelected).Select(l => l.Index));
+
             SignalMacroGenerator.GenerateResult result;
             try
             {
                 result = SignalMacroGenerator.Generate(inputJson,
-                    new SignalMacroGenerator.GenerateOptions(StartFkey: StartFkey));
+                    new SignalMacroGenerator.GenerateOptions(StartFkey: StartFkey, LayerIndices: picked));
             }
             catch (Exception ex)
             {
@@ -139,4 +225,26 @@ public partial class GenerateSignalsViewModel : ObservableObject
         var ext = Path.GetExtension(inputPath);
         return $"{stem}_with_signals{ext}";
     }
+}
+
+/// <summary>
+/// Per-layer row for the layer-selection list in the Generate Signals window.
+/// </summary>
+public partial class LayerSelectionItem : ObservableObject
+{
+    public LayerSelectionItem(int index, string name)
+    {
+        Index = index;
+        Name = name;
+    }
+
+    public int Index { get; }
+    public string Name { get; }
+    public string Label => $"{Index}. {Name}";
+
+    [ObservableProperty]
+    private bool _isSelected = true;
+
+    [ObservableProperty]
+    private string _projectedFkey = "";
 }

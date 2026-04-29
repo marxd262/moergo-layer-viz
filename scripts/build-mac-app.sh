@@ -59,7 +59,7 @@ echo "[1/4] Publishing ($CONFIG, $RID, self-contained${VERSION:+, v$VERSION})...
 dotnet publish "$PROJECT" \
   -c "$CONFIG" -r "$RID" --self-contained true \
   -p:PublishSingleFile=false \
-  "${VERSION_ARGS[@]}" \
+  ${VERSION_ARGS[@]+"${VERSION_ARGS[@]}"} \
   --nologo
 
 LSREGISTER=/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister

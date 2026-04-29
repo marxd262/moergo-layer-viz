@@ -98,11 +98,16 @@
   <!-- Generate signals window -->
   <data name="Title_GenerateSignals"><value>Generate signal macros &amp; hold-taps</value></data>
   <data name="Generate_Heading"><value>Generate signal macros &amp; hold-taps</value></data>
-  <data name="Generate_Description"><value>Adds parametric &amp;Tolayer / &amp;Molayer macros, one fixed &amp;mo_&lt;layer&gt;_f&lt;NN&gt;signal macro per non-base layer, and a matching &amp;ht_&lt;layer&gt; hold-tap for each. Existing entries with the same name are skipped, and your keybindings are not modified.</value></data>
+  <data name="Generate_Description"><value>Adds parametric &amp;Tolayer / &amp;Molayer macros, one fixed &amp;mo_&lt;layer&gt;_f&lt;NN&gt;signal macro per selected layer, and a matching &amp;ht_&lt;layer&gt; hold-tap for each. Existing entries with the same name are skipped, and your keybindings are not modified.</value></data>
   <data name="Generate_LoadedLayout"><value>Loaded layout</value></data>
   <data name="Generate_NoLayoutLoaded"><value>(no layout loaded)</value></data>
+  <data name="Generate_LayersHeading"><value>Layers to generate signals for</value></data>
+  <data name="Generate_LayersHint"><value>Pick the layers you want to track. Selected layers are packed into Fkeys consecutively starting at the value below — handy when you have more than 12 layers and only F13–F24 are available.</value></data>
+  <data name="Generate_SelectAll"><value>Select all</value></data>
+  <data name="Generate_ClearAll"><value>Clear</value></data>
+  <data name="Generate_LayerOutOfRange"><value>—</value></data>
   <data name="Generate_StartFkey"><value>Starting Fkey (F13–F24)</value></data>
-  <data name="Generate_StartFkeyHint"><value>The first non-base layer is mapped to this Fkey, the next to start+1, and so on. F13–F24 are reserved on most OSes so they won't collide with normal typing.</value></data>
+  <data name="Generate_StartFkeyHint"><value>The first selected layer is mapped to this Fkey, the next to start+1, and so on. F13–F24 are reserved on most OSes so they won't collide with normal typing.</value></data>
   <data name="Generate_Button"><value>Generate &amp; save…</value></data>
   <data name="Generate_StatusFkeyRange"><value>Starting Fkey must be between F{0} and F{1}.</value></data>
   <data name="Generate_StatusReadFailed"><value>Could not read the loaded layout: {0}</value></data>

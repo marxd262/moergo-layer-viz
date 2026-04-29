@@ -74,14 +74,14 @@ public class MoergoJsonLoaderTests
     }
 
     [Fact]
-    public void Glove80_LayerSignalTable_MapsASignalKeyToLayer1()
+    public void Glove80_LayerSignalTable_MapsF13SignalKeyToLayer1()
     {
         var path = Path.Combine(AppContext.BaseDirectory, "Glove80.json");
         var config = MoergoJsonLoader.LoadFromFile(path);
         var signals = SignalMacroScanner.DetectSignalMacros(config);
         var table = LayerSignalTable.Build(config, signals);
 
-        var mapping = table.TryResolve("A");
+        var mapping = table.TryResolve("F13");
         Assert.NotNull(mapping);
         Assert.Equal(1, mapping!.TargetLayer);
         Assert.True(mapping.IsMomentary);

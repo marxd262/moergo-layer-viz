@@ -92,11 +92,16 @@
 
   <data name="Title_GenerateSignals"><value>Signaalmacro's &amp; hold-taps genereren</value></data>
   <data name="Generate_Heading"><value>Signaalmacro's &amp; hold-taps genereren</value></data>
-  <data name="Generate_Description"><value>Voegt parametrische &amp;Tolayer / &amp;Molayer macro's toe, één vaste &amp;mo_&lt;laag&gt;_f&lt;NN&gt;signal macro per niet-basis-laag, en een bijbehorende &amp;ht_&lt;laag&gt; hold-tap per laag. Bestaande items met dezelfde naam worden overgeslagen, en je toetsindeling wordt niet aangepast.</value></data>
+  <data name="Generate_Description"><value>Voegt parametrische &amp;Tolayer / &amp;Molayer macro's toe, één vaste &amp;mo_&lt;laag&gt;_f&lt;NN&gt;signal macro per geselecteerde laag, en een bijbehorende &amp;ht_&lt;laag&gt; hold-tap per laag. Bestaande items met dezelfde naam worden overgeslagen, en je toetsindeling wordt niet aangepast.</value></data>
   <data name="Generate_LoadedLayout"><value>Geladen layout</value></data>
   <data name="Generate_NoLayoutLoaded"><value>(geen layout geladen)</value></data>
+  <data name="Generate_LayersHeading"><value>Lagen waarvoor signalen gegenereerd worden</value></data>
+  <data name="Generate_LayersHint"><value>Kies de lagen die je wilt volgen. Geselecteerde lagen worden achtereenvolgens op Fkeys vanaf de waarde hieronder geplaatst — handig als je meer dan 12 lagen hebt en alleen F13–F24 beschikbaar zijn.</value></data>
+  <data name="Generate_SelectAll"><value>Alles selecteren</value></data>
+  <data name="Generate_ClearAll"><value>Wissen</value></data>
+  <data name="Generate_LayerOutOfRange"><value>—</value></data>
   <data name="Generate_StartFkey"><value>Begin-Fkey (F13–F24)</value></data>
-  <data name="Generate_StartFkeyHint"><value>De eerste niet-basis-laag krijgt deze Fkey, de volgende start+1, enzovoort. F13–F24 worden door de meeste OS'en niet gebruikt en botsen niet met normaal typen.</value></data>
+  <data name="Generate_StartFkeyHint"><value>De eerste geselecteerde laag krijgt deze Fkey, de volgende start+1, enzovoort. F13–F24 worden door de meeste OS'en niet gebruikt en botsen niet met normaal typen.</value></data>
   <data name="Generate_Button"><value>Genereren &amp; opslaan…</value></data>
   <data name="Generate_StatusFkeyRange"><value>Begin-Fkey moet tussen F{0} en F{1} liggen.</value></data>
   <data name="Generate_StatusReadFailed"><value>Kon de geladen layout niet lezen: {0}</value></data>

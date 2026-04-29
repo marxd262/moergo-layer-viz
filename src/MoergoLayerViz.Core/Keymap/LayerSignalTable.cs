@@ -1,3 +1,4 @@
+using MoergoLayerViz.Core.Diagnostics;
 using MoergoLayerViz.Core.Models;
 
 namespace MoergoLayerViz.Core.Keymap;
@@ -54,6 +55,16 @@ public sealed class LayerSignalTable
                 if (!sig.TryResolveTargetLayer(b, out var targetLayer)) continue;
                 if (!sig.TryResolveSignalKeycode(b, out var keycode)) continue;
 
+                // Only F1–F24 count as signals: parametric homerow-mod macros
+                // (e.g. &HRM_left_pinky_hold LGUI) match the same shape but
+                // emit modifier keycodes that aren't intended as layer signals.
+                if (!IsFkey(keycode))
+                {
+                    DiagnosticLog.Debug("LayerSignalTable",
+                        $"Ignoring '{sig.MacroName}' on layer {layer.Index}: resolved keycode '{keycode}' is not an Fkey.");
+                    continue;
+                }
+
                 // Last writer wins — if the user binds the same macro to
                 // multiple keys with different layers, we pick the last one
                 // in JSON order. Good enough until we see a real conflict.
@@ -82,6 +93,13 @@ public sealed class LayerSignalTable
                 lookup[ht.Name] = wrapped;
         }
         return lookup;
+    }
+
+    private static bool IsFkey(string keycode)
+    {
+        if (string.IsNullOrEmpty(keycode)) return false;
+        if (keycode[0] != 'F' && keycode[0] != 'f') return false;
+        return int.TryParse(keycode.AsSpan(1), out var n) && n >= 1 && n <= 24;
     }
 }
 
