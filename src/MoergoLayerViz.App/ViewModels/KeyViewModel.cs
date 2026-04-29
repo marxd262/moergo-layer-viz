@@ -67,28 +67,45 @@ public partial class KeyViewModel : ObservableObject
     {
         // Slim arrow glyphs need extra weight to read at a glance.
         "↑" or "↓" or "←" or "→" => 28,
-        _ => Label.Length switch
+        _ => LongestWordLength(Label) switch
         {
             0 => 14,
             1 => 20,
             2 => 18,
             3 => 15,
-            _ => 12,
+            <= 5 => 13,
+            <= 8 => 11,
+            _ => 10,
         },
     };
 
     /// <summary>
     /// Same length-based scaling for the subscript — single-char glyphs (the
     /// modifier icons ⇧ ⌃ ⌥ ⌘) get a bump so they read as icons rather than
-    /// vestigial tags.
+    /// vestigial tags. Long layer-name subscripts (now possibly multi-word
+    /// after FormatLayerName) shrink further so they fit when wrapped.
     /// </summary>
-    public double SubscriptFontSize => Subscript.Length switch
+    public double SubscriptFontSize => LongestWordLength(Subscript) switch
     {
         0 => 11,
         1 => 15,
         2 => 12,
-        _ => 11,
+        <= 4 => 11,
+        <= 7 => 10,
+        _ => 9,
     };
+
+    private static int LongestWordLength(string s)
+    {
+        if (string.IsNullOrEmpty(s)) return 0;
+        int best = 0, run = 0;
+        foreach (var c in s)
+        {
+            if (c == ' ' || c == '\n') { if (run > best) best = run; run = 0; }
+            else run++;
+        }
+        return run > best ? run : best;
+    }
 
     public KeyViewModel(KeyPosition position)
     {
@@ -282,6 +299,11 @@ public partial class KeyViewModel : ObservableObject
         if (!string.IsNullOrEmpty(b.DecorationLabel))
             return (b.DecorationLabel, "", "");
 
+        // Display-only: insert wrap opportunities into long layer names like
+        // "HRM_WinLinx" → "HRM Win Linx" so TextBlock.TextWrapping can break
+        // them onto multiple lines. Tooltip keeps the raw form.
+        var layerName = targetLayerName is null ? null : FormatLayerName(targetLayerName);
+
         // Recognised layer-switch macro (wraps &mo / &to / &tog / &lt / … with a
         // host-visible signal keycode): mirror the bare &to layout — main label
         // is the target layer name, with a "Macro" badge so the user can tell
@@ -291,7 +313,7 @@ public partial class KeyViewModel : ObservableObject
         // keycode visible, which is more informative for &ht_*-style wrappers.
         if (signal is not null && holdTap is null)
         {
-            var layerLabel = targetLayerName
+            var layerLabel = layerName
                 ?? (signal.TryResolveTargetLayer(b, out var idx) ? "L" + idx : b.Behavior.TrimStart('&'));
             return (layerLabel, "", "Macro");
         }
@@ -309,7 +331,7 @@ public partial class KeyViewModel : ObservableObject
             var hold = new KeyBinding(holdTap.HoldBinding, holdParams);
             var (tapLabel, _, _) = FormatBinding(tap, null, null);
             var (holdLabel, _, _) = FormatBinding(hold, targetLayerName, null);
-            var sub = !string.IsNullOrEmpty(targetLayerName) ? targetLayerName : holdLabel;
+            var sub = !string.IsNullOrEmpty(layerName) ? layerName : holdLabel;
             return (tapLabel, sub, "Hold-Tap");
         }
 
@@ -321,10 +343,16 @@ public partial class KeyViewModel : ObservableObject
                 var (kpLabel, kpSub) = ZmkKeycodeLabel.FormatKpParams(b.Params);
                 return (kpLabel, kpSub, "");
             case "&to" when b.Params.Count >= 1:
-                return (targetLayerName ?? ("L" + b.Params[0]), "", "To Layer");
+                return (layerName ?? ("L" + b.Params[0]), "", "To Layer");
+            case "&mo" when b.Params.Count >= 1:
+                return (layerName ?? ("L" + b.Params[0]), "", "Momentary");
+            case "&tog" when b.Params.Count >= 1:
+                return (layerName ?? ("L" + b.Params[0]), "", "Toggle Layer");
+            case "&sl" when b.Params.Count >= 1:
+                return (layerName ?? ("L" + b.Params[0]), "", "Sticky Layer");
             case "&lt" when b.Params.Count == 2 && int.TryParse(b.Params[0], out _):
                 return (ZmkKeycodeLabel.Display(b.Params[1]),
-                        targetLayerName ?? ("L" + b.Params[0]),
+                        layerName ?? ("L" + b.Params[0]),
                         "Layer Tap");
 
             // Standard ZMK system behaviors (magic / adjust layer).
@@ -356,6 +384,31 @@ public partial class KeyViewModel : ObservableObject
 
         if (b.Params.Count == 0) return (b.Behavior.TrimStart('&'), "", "");
         return (string.Join(' ', b.Params), "", "");
+    }
+
+    // Internal so tests can exercise the splitting heuristic directly.
+    internal static string FormatLayerName(string name)
+    {
+        if (string.IsNullOrEmpty(name)) return name;
+        var sb = new System.Text.StringBuilder(name.Length + 4);
+        for (int i = 0; i < name.Length; i++)
+        {
+            var c = name[i];
+            if (c == '_')
+            {
+                if (sb.Length > 0 && sb[sb.Length - 1] != ' ') sb.Append(' ');
+                continue;
+            }
+            // camelCase break: insert space when an uppercase letter follows a
+            // lowercase letter or digit. Runs of uppercase ("HRM", "TKZ") are
+            // preserved so acronyms read as a unit.
+            if (i > 0 && char.IsUpper(c) && (char.IsLower(name[i - 1]) || char.IsDigit(name[i - 1])))
+            {
+                if (sb.Length > 0 && sb[sb.Length - 1] != ' ') sb.Append(' ');
+            }
+            sb.Append(c);
+        }
+        return sb.ToString().TrimEnd();
     }
 
     private static string FormatBtParams(IReadOnlyList<string> p) => p[0] switch

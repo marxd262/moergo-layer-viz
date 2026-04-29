@@ -52,6 +52,8 @@ The first launch may show a SmartScreen warning ("Windows protected your PC") be
 | ![Settings, General tab](docs/screenshots/5.png) | ![Settings, Layers tab](docs/screenshots/6.png) |
 | Settings — General (opacity, press color, hotkey, layout) | Settings — Layers (per-layer color + signal-key picker) |
 
+The toolbar and layer-tabs strip flip to whichever edge faces the screen edge as you drag the window: they sit **on top** when the window is in the top half of the screen, and **at the bottom** when it's in the bottom half. This keeps the controls between the overlay and the nearer screen edge so they don't get in the way of whatever you're looking at behind it.
+
 ---
 
 ## Why this exists — and why ZMK layer state needs an F-key trick

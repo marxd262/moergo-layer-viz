@@ -116,6 +116,7 @@
                                FontSize="{Binding SubscriptFontSize}"
                                FontWeight="Bold"
                                Opacity="0.9"
+                               TextWrapping="Wrap"
                                TextAlignment="Center"
                                Foreground="{Binding KeyForegroundColor, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
                                IsVisible="{Binding Subscript, Converter={x:Static conv:StringConverters.IsNotNullOrEmpty}}" />

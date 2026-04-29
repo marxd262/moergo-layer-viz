@@ -850,7 +850,7 @@ public partial class MainWindowViewModel : ObservableObject
         {
             Layers.Add(new LayerViewModel(
                 layer.Index,
-                layer.Name,
+                $"{layer.Index} : {layer.Name}",
                 LayerColorPalette.GetColor(_profile.Id, layer.Index),
                 SelectLayer));
         }
@@ -892,11 +892,11 @@ public partial class MainWindowViewModel : ObservableObject
             var binding = ResolveEffectiveBinding(layer.Index, i);
 
             var isSignal = signalByName.TryGetValue(binding.Behavior, out var signalMacro);
-            var targetLayer = ResolveTargetLayer(binding, isSignal ? signalMacro : null);
+            holdTapByName.TryGetValue(binding.Behavior, out var holdTap);
+            var targetLayer = ResolveTargetLayer(binding, isSignal ? signalMacro : null, holdTap);
             var targetLayerName = targetLayer is int tl && tl >= 0 && tl < _config.Layers.Count
                 ? _config.Layers[tl].Name
                 : null;
-            holdTapByName.TryGetValue(binding.Behavior, out var holdTap);
             Keys[i].ApplyBinding(
                 binding,
                 isSignalMacro: isSignal,
@@ -1246,7 +1246,7 @@ public partial class MainWindowViewModel : ObservableObject
     /// &amp;lt / &amp;sl</c>) read their first param directly. Returns null
     /// for non-layer-switching bindings.
     /// </summary>
-    private static int? ResolveTargetLayer(KeyBinding binding, SignalMacro? signal)
+    private static int? ResolveTargetLayer(KeyBinding binding, SignalMacro? signal, HoldTap? holdTap = null)
     {
         if (signal is not null && signal.TryResolveTargetLayer(binding, out var signalLayer))
             return signalLayer;
@@ -1257,6 +1257,19 @@ public partial class MainWindowViewModel : ObservableObject
             && binding.Params.Count >= 1
             && int.TryParse(binding.Params[0], out var paramLayer))
             return paramLayer;
+
+        // Hold-tap whose hold side is itself a layer-switch (e.g. the user-
+        // defined `&space_v3_TKZ` with bindings ["&mo", "&kp"]). The hold-side
+        // params come first in the binding's param list, so the leading param
+        // is the layer index.
+        if (holdTap is not null
+            && (holdTap.HoldBinding == "&to" || holdTap.HoldBinding == "&mo"
+                || holdTap.HoldBinding == "&tog" || holdTap.HoldBinding == "&lt"
+                || holdTap.HoldBinding == "&sl")
+            && holdTap.HoldArity >= 1
+            && binding.Params.Count >= 1
+            && int.TryParse(binding.Params[0], out var holdLayer))
+            return holdLayer;
 
         return null;
     }
