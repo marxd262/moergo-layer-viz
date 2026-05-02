@@ -1,10 +1,10 @@
 # MoergoLayerViz
 
-Desktop overlay that mirrors the active ZMK layer of a [Moergo](https://www.moergo.com/) GO60 or Glove80 keyboard, in real time, on Windows and macOS.
+Desktop overlay that mirrors the active ZMK layer of a [Moergo](https://www.moergo.com/) GO60 or Glove80 keyboard, in real time, on Windows, macOS, and Linux.
 
 The app reads layout JSON exported from Moergo's online layout editor and renders the keyboard as a small overlay window. When you switch layers on the keyboard, the overlay follows — labels update, the active layer chip lights up, individual keypresses pulse on the board.
 
-It's read-only. No firmware flashing, no keymap editing. The app watches the keyboard via the OS keyboard hook and reads JSON exports — that's it.
+It's read-only. No firmware flashing, no keymap editing. The app watches the keyboard via Raw HID (when the firmware reports layer state directly) or via the OS keyboard hook on signal-macro F-keys, and reads JSON exports — that's it.
 
 ![MoergoLayerViz overlay following the active layer of a Glove80 keyboard](docs/screenshots/1.png)
 
@@ -15,6 +15,7 @@ Pre-built zips for each tagged release are on the [latest release](../../release
 - `MoergoLayerViz-<version>-windows-x64.zip` — Windows 10/11, x64.
 - `MoergoLayerViz-<version>-macos-arm64.zip` — Apple Silicon Macs (M-series).
 - `MoergoLayerViz-<version>-macos-x64.zip` — Intel Macs.
+- `MoergoLayerViz-<version>-linux-x64.tar.gz` — Linux, x64 (Raw HID only — see notes).
 
 If you'd rather build it yourself, skip ahead to [Build from source](#build-from-source).
 
@@ -39,6 +40,35 @@ The first launch may show a SmartScreen warning ("Windows protected your PC") be
 
 > macOS 26+ doesn't always persist the Accessibility grant across system upgrades for ad-hoc-signed apps. If the overlay stops following layers after a major OS update, remove the stale entry under Accessibility and grant it again. For a setup where the grant survives upgrades, build from source with a self-signed Keychain cert — see [macOS development build](#macos-development-build).
 
+### Linux
+
+Linux works **only with a board running Raw HID firmware** (see [Firmware support](#firmware-support)). Without it, the OS-keyboard-hook fallback that powers the F-key signal-macro path can't be used: Wayland blocks process-global key capture by design, and the X11 / libinput workarounds need a daemon plus elevated permissions that this app doesn't ship. The global show/hide hotkey (F12 by default) is unavailable on Linux for the same reason and is hidden from Settings.
+
+1. Download `MoergoLayerViz-<version>-linux-x64.tar.gz` from [Releases](../../releases/latest) and extract:
+
+   ```bash
+   tar -xzf MoergoLayerViz-*-linux-x64.tar.gz -C ~/Applications/MoergoLayerViz
+   ```
+
+2. Install a udev rule so your user can read `/dev/hidraw*` for Moergo's USB VID/PID without root. The ZMK project ships such a rule; the minimal version is:
+
+   ```
+   # /etc/udev/rules.d/50-zmk.rules
+   KERNEL=="hidraw*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="27db", TAG+="uaccess", MODE="0660"
+   ```
+
+   Then reload and re-plug the keyboard:
+
+   ```bash
+   sudo udevadm control --reload-rules && sudo udevadm trigger
+   ```
+
+   If the app logs `EACCES opening /dev/hidrawN` it means this rule isn't applied yet.
+
+3. Run `./MoergoLayerViz.App`.
+
+Bluetooth works the same way — `/dev/hidraw*` is transport-agnostic — provided your distro pairs the keyboard as an HID device.
+
 ---
 
 ## Screenshots
@@ -56,13 +86,23 @@ The toolbar and layer-tabs strip flip to whichever edge faces the screen edge as
 
 ---
 
-## Why this exists — and why ZMK layer state needs an F-key trick
+## Why this exists — two ways to observe layer state
 
 ZMK's layer-switch behaviors (`&mo`, `&to`, `&tog`, `&lt`, `&sl`) execute entirely on the keyboard's microcontroller. The host OS never sees them. So a plain desktop app can't observe layer changes via the normal input event stream — there's nothing to observe.
 
-The standard ZMK workaround is a **signal macro**: a macro that wraps the layer switch alongside an OS-visible keycode tap, conventionally an F-key in the F13–F24 range (those are reserved by the OS and rarely consumed by apps).
+The app supports two ways around this. It picks one automatically; you can override in **Settings → General → Layer source**.
 
-The canonical shape:
+### 1. Raw HID (preferred)
+
+When the firmware ships an extra Raw HID endpoint that *reports* layer state and key positions to the host, the app reads those reports directly. No signal macros, no host-side keycode lookup, no untrackable layer switches — `&magic`, bare `&mo`, combos, tap-dance all show up correctly. This is not how the **Go60 stock firmware** works today. If you want this you need to build the firmware yourself! See [Firmware support](#firmware-support) for what the protocol looks like and how to add it to other boards.
+
+### 2. Signal macros (fallback)
+
+The standard ZMK workaround when no HID feedback is available: a **signal macro** that wraps the layer switch alongside an OS-visible keycode tap, conventionally an F-key in the F13–F24 range (those are reserved by the OS and rarely consumed by apps). The app listens for the F-key via the OS keyboard hook and infers the layer.
+
+This is the only path on **stock Glove80** firmware today, and the only path that works on Windows/macOS without a HID-capable build. **Linux requires Raw HID** — Wayland blocks the global keyboard hook, so the signal-macro fallback can't run there.
+
+The canonical signal-macro shape:
 
 ```
 &macro_press               → push layer N
@@ -89,7 +129,52 @@ Determined structurally by the presence of `&macro_pause_for_release` in the pre
 
 ### Untrackable layer switches
 
-Bare `&mo` / `&magic` / unwrapped layer-switch bindings emit nothing the host can see. The app paints these keys with a pink border so you can spot them at a glance. On Glove80, `&magic` is the most common offender.
+Bare `&mo` / `&magic` / unwrapped layer-switch bindings emit nothing the host can see in **signal-macro mode**. The app paints these keys with a pink border so you can spot them at a glance. On stock Glove80 firmware, `&magic` is the most common offender. The pink border is hidden automatically when the app is running over Raw HID — the firmware reports those switches directly.
+
+---
+
+## Firmware support
+
+This section is for users (or board maintainers) who want the Raw HID path to work on a board that doesn't ship with it yet. The app itself stays read-only and neutral — it never flashes anything; the firmware change has to come from your own ZMK build pipeline.
+
+### Where it works today
+
+| Board | Stock firmware | Custom firmware |
+| --- | --- | --- |
+| **Moergo GO60** | Signal macros only | Raw HID possible, see below |
+| **Moergo Glove80** | Signal macros only | Raw HID possible, see below |
+
+The app auto-detects which path is available and falls back gracefully. HID is worth setting up if you want `&magic` (and other unwrapped switches) reflected in the overlay.
+
+### What the app expects from the firmware
+
+The app talks to a **Raw HID interface** with these properties — anything that satisfies the contract works, regardless of which ZMK module produced it:
+
+- **Usage page** `0xFF60`, **usage** `0x61` — non-standard "vendor-defined" range so it doesn't collide with the keyboard interface and doesn't trigger Input Monitoring / TCC prompts on macOS. The same endpoint convention used by [QMK's Raw HID](https://docs.qmk.fm/#/feature_rawhid).
+- **32-byte input reports**, with byte 0 as the message type:
+  - `0xFF` — **layer state**. Bytes 6–7 carry a little-endian 16-bit bitmask of currently-active layers. The app collapses to "highest set bit" for the single-layer overlay.
+  - `0xF1` — **key event**. Byte 2 is the matrix position (matches the binding index in the layout JSON), byte 3 is `0x01` for press / `0x00` for release.
+- Reports must be sent on every layer change *and* on every key press/release so the overlay can highlight the physical key being pressed regardless of what binding it resolves to.
+
+The pure parser lives in [src/MoergoLayerViz.Core/Input/RawHidProtocol.cs](src/MoergoLayerViz.Core/Input/RawHidProtocol.cs) — that file is the canonical reference if anything in this section is ambiguous.
+
+### Adding it to a ZMK board
+
+My Go60/Glove80 ZMK builds use two community modules to satisfy the contract:
+
+- [zzeneg/zmk-raw-hid](https://github.com/zzeneg/zmk-raw-hid) — exposes the Raw HID endpoint over USB and BLE.
+- [srwi/zmk-keypeek-layer-notifier](https://github.com/srwi/zmk-keypeek-layer-notifier) — emits the `0xFF` layer-state and `0xF1` key-event reports the app reads.
+
+A complete, working `west` manifest pulling them in (this is the actual Go60 setup the app is developed against): [ovandongen/go60-zmk-config-west](https://github.com/ovandongen/go60-zmk-config-west). The relevant pieces are:
+
+- `config/west.yml` — adds the two modules as projects on top of the `moergo-sc/zmk` base.
+- `config/<shield>.conf` — `CONFIG_RAW_HID=y` to enable the endpoint at build time.
+
+Build, flash, plug in. The app picks the board up automatically — matching is by HID usage page / usage, with the product-name string only used to scope to the currently-selected keyboard profile.
+
+### Glove80
+
+I'm working on a Glove80 equivalent. The repo URL will be added here once it's working. Until then, Glove80 users can stay on the signal-macro path on Windows/macOS and can't use the app on Linux. The steps to enable this on the Glove80 should be the same I think, but when I have it running I will update this part.
 
 ---
 
@@ -131,13 +216,13 @@ Author the macros directly in Moergo's editor following one of the shapes above.
 ### Prerequisites
 
 - **.NET 10 SDK** (target framework `net10.0`).
-- macOS 11+ for the macOS bundle, Windows 10+ for the Windows build.
+- macOS 11+ for the macOS bundle, Windows 10+ for the Windows build, any current Linux distro for the Linux build (no daemon, just `/dev/hidraw` access via the udev rule above).
 
 ### Common commands
 
 ```bash
 dotnet build                                       # full solution build
-dotnet test                                        # run all xUnit tests (169)
+dotnet test                                        # run all xUnit tests (218)
 dotnet run --project src/MoergoLayerViz.App        # launch (Windows / Linux only — see macOS dev notes below)
 scripts/build-mac-app.sh                           # build signed .app bundle (macOS)
 ```
@@ -201,7 +286,7 @@ src/
                           profiles, settings, diagnostics. No Avalonia refs.
   MoergoLayerViz.App/     Avalonia 11 UI, MVVM (CommunityToolkit.Mvvm),
                           SharpHook adapter, custom chrome, EN/NL localization.
-  MoergoLayerViz.Tests/   xUnit fixtures (169 tests). Includes Go60.json +
+  MoergoLayerViz.Tests/   xUnit fixtures (218 tests). Includes Go60.json +
                           Glove80.json layouts copied to test output.
 build/macos/Info.plist    Bundle plist (CFBundleIdentifier dev.moergolayerviz.local).
 scripts/build-mac-app.sh  macOS build + codesign pipeline.
@@ -234,7 +319,7 @@ docs/parsing.md           Canonical signal-macro / hold-tap / layer-signal
 - **Read-only.** No firmware flashing, no keymap editing. The app watches the keyboard and reads JSON; nothing more.
 - **F-key ceiling.** F13–F24 = 12 trackable layers per board. Modifier-wrapped F-keys (e.g. `&kp LC(LS(F16))`) are a possible future expansion noted in [docs/parsing.md](docs/parsing.md), but not currently supported.
 - **Untrackable behaviors.** Bare `&mo`, `&magic`, and any unwrapped layer-switch bindings remain invisible to the host. The app flags them with a pink border but cannot follow them.
-- **Linux:** no binary distribution. Wayland blocks global key capture by design, and the X11 / libinput workaround needs a daemon plus udev rules. The app technically runs on Linux as a static layer viewer (live tracking is gated off via `OperatingSystem.IsLinux()`), but this isn't a supported configuration.
+- **Linux: Raw HID only.** Wayland blocks process-global key capture by design, so the signal-macro fallback isn't available. A board running Raw HID firmware (i.e. one of the custom builds described in [Firmware support](#firmware-support)) works fully — live tracking + keypress highlights. Stock-firmware boards are limited to the static layer viewer on Linux. The global show/hide hotkey (F12) is also unavailable on Linux for the same Wayland reason and is hidden from the Settings UI.
 - **No multi-layer view, no in-app EN/NL toggle UI** (resources exist; toggle UI deferred), **no screen-reader / keyboard-nav support**.
 
 ---

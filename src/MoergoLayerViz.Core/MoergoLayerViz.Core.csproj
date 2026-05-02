@@ -11,4 +11,8 @@
     <InternalsVisibleTo Include="MoergoLayerViz.Tests" />
   </ItemGroup>
 
+  <ItemGroup>
+    <PackageReference Include="HidSharp" Version="2.6.4" />
+  </ItemGroup>
+
 </Project>

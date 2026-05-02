@@ -35,6 +35,11 @@ public partial class MainWindowViewModel : ObservableObject
     private IReadOnlyList<UntrackableLayerSwitch> _untrackable = Array.Empty<UntrackableLayerSwitch>();
     private string? _loadedLayoutPath;
     private string? _lastLoadError;
+    // Last successful load's status text *without* the dynamic untrackable
+    // suffix. Kept so we can recompose StatusMessage when the active layer
+    // source flips (HID makes the untrackable warning irrelevant). Null when
+    // the current StatusMessage is something else (error, transient, etc).
+    private string? _loadStatusBase;
 
     // Reverse adjacency: <layer> → set of layers that can push this layer onto
     // the active stack (via &mo / &lt / &sl / &tog / signal macro). Used to
@@ -43,6 +48,8 @@ public partial class MainWindowViewModel : ObservableObject
 
     private IKeyEventSource? _keyEventSource;
     private HotkeyLayerTracker? _tracker;
+    private LayerSourceCoordinator? _layerCoordinator;
+    private string _layerSourceMode = LayerSourceCoordinator.ModeAuto;
 
     // Active-layer (modifier-set + keycode) → KeyViewModel(s) lookup, rebuilt
     // on every layer change so OnKeyObservedFromHook can flash the right
@@ -74,6 +81,21 @@ public partial class MainWindowViewModel : ObservableObject
 
     /// <summary>Tooltip text for the (often-truncated) status bar — full status + keyboard hint joined.</summary>
     public string StatusMessageFull => $"{StatusMessage}  ·  {KeyboardStatusHint}";
+
+    /// <summary>
+    /// Suffix appended to the keyboard status hint describing the active layer
+    /// source ("via Raw HID (Go60 Left)" / "via signal macros"). Empty until
+    /// the coordinator has resolved a source.
+    /// </summary>
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(KeyboardStatusHint))]
+    [NotifyPropertyChangedFor(nameof(StatusMessageFull))]
+    private string _layerSourceHint = "";
+
+    /// <summary>True while the HID source is the active layer source. Used by
+    /// the renderer to hide pink "untrackable" overlays since every layer
+    /// switch is reported by HID.</summary>
+    [ObservableProperty] private bool _isHidSourceActive;
     [ObservableProperty] private bool _isAlwaysOnTop;
     [ObservableProperty] private bool _isLiveHighlightingEnabled;
     [ObservableProperty] private bool _isAutoLayerSwitchEnabled;
@@ -423,10 +445,16 @@ public partial class MainWindowViewModel : ObservableObject
     [NotifyPropertyChangedFor(nameof(ActiveLayerTintColor))]
     private IKeyboardProfile _selectedKeyboard = null!;
 
-    /// <summary>Right-aligned status-bar hint: "DisplayName · N keys".</summary>
-    public string KeyboardStatusHint =>
-        Loc.Instance.Format("Status_KeyboardHintFormat",
-            SelectedKeyboard?.DisplayName ?? "", SelectedKeyboard?.KeyCount ?? 0);
+    /// <summary>Right-aligned status-bar hint: "DisplayName · N keys" with layer-source suffix when known.</summary>
+    public string KeyboardStatusHint
+    {
+        get
+        {
+            var core = Loc.Instance.Format("Status_KeyboardHintFormat",
+                SelectedKeyboard?.DisplayName ?? "", SelectedKeyboard?.KeyCount ?? 0);
+            return string.IsNullOrEmpty(LayerSourceHint) ? core : $"{core}  ·  {LayerSourceHint}";
+        }
+    }
 
     // --- Callbacks set by App.axaml.cs to bridge to the Window ---
     public Action? QuitRequested { get; set; }
@@ -477,6 +505,7 @@ public partial class MainWindowViewModel : ObservableObject
             _hotkeyKey = s.HotkeyKey;
         _isStackedLayout = s.StackedLayout;
         _stackedTopHand = string.IsNullOrWhiteSpace(s.StackedTopHand) ? "Left" : s.StackedTopHand;
+        _layerSourceMode = string.IsNullOrWhiteSpace(s.LayerSource) ? LayerSourceCoordinator.ModeAuto : s.LayerSource;
         // Seed the static palette with persisted per-keyboard, per-layer overrides
         // so the very first paint already reflects the user's customization.
         LayerColorPalette.SetOverrides(s.LayerColors);
@@ -518,6 +547,7 @@ public partial class MainWindowViewModel : ObservableObject
             }
             catch (Exception ex)
             {
+                _loadStatusBase = null;
                 StatusMessage = $"Could not open log folder: {ex.Message}";
             }
         });
@@ -546,10 +576,14 @@ public partial class MainWindowViewModel : ObservableObject
         }
         else
         {
+            _loadStatusBase = null;
             StatusMessage = Loc.Instance["Status_NoLayoutLoaded"];
         }
 
-        if (IsLiveHighlightingEnabled && !OperatingSystem.IsLinux())
+        // Live tracking is no longer Linux-blocked: the HID source works
+        // without any global hook, and StartKeyEventTracking() internally
+        // skips SharpHook when _hookProvider is null (which it is on Linux).
+        if (IsLiveHighlightingEnabled)
             StartKeyEventTracking();
     }
 
@@ -573,6 +607,8 @@ public partial class MainWindowViewModel : ObservableObject
                     SelectedKeyboard = matching;
                     BuildKeysFromProfile();
                     PersistSetting(s => s with { Keyboard = matching.Id });
+                    // Re-scope HID discovery — see SelectKeyboard for context.
+                    _layerCoordinator?.SetActiveProfile(matching);
                     autoSwitchedTo = matching;
                     DiagnosticLog.Info("MainVM",
                         $"Auto-switched profile to {matching.Id} ({bindingCount} keys) on load");
@@ -616,16 +652,14 @@ public partial class MainWindowViewModel : ObservableObject
                 baseMsg += " — " + Loc.Instance.Format("Status_LoadKeyCountMismatch",
                     bindingCount, _profile.DisplayName, _profile.KeyCount);
             }
-            if (_untrackable.Count > 0)
-            {
-                baseMsg += " — " + Loc.Instance.Format("Status_UntrackableLayersFormat", _untrackable.Count);
-            }
-            StatusMessage = baseMsg;
+            _loadStatusBase = baseMsg;
+            StatusMessage = ComposeLoadStatus();
             DiagnosticLog.Info("MainVM",
                 $"Loaded '{path}' signalMacros={_signalMacros.Count} untrackable={_untrackable.Count}");
         }
         catch (Exception ex)
         {
+            _loadStatusBase = null;
             StatusMessage = Loc.Instance.Format("Status_LoadErrorFormat", ex.Message);
             _lastLoadError = $"{path}: {ex.GetType().Name}: {ex.Message}";
             DiagnosticLog.Error("MainVM", $"Load failed: {ex}");
@@ -790,21 +824,29 @@ public partial class MainWindowViewModel : ObservableObject
             Layers.Clear();
             ActiveLayerIndex = 0;
             HasLayoutLoaded = false;
+            _loadStatusBase = null;
             StatusMessage = Loc.Instance.Format("Status_KeyboardSwitchedUnloaded", profile.DisplayName);
         }
         else if (_config is not null)
         {
             RebuildAndApplyMergedSignalTable();
             ApplyActiveLayer(ActiveLayerIndex);
+            _loadStatusBase = null;
             StatusMessage = Loc.Instance.Format("Status_KeyboardSwitched", profile.DisplayName);
         }
         else
         {
+            _loadStatusBase = null;
             StatusMessage = Loc.Instance.Format("Status_KeyboardSwitched", profile.DisplayName);
         }
 
         PersistSetting(s => s with { Keyboard = profile.Id });
         DiagnosticLog.Info("MainVM", $"Keyboard profile switched to {profile.Id}");
+
+        // Re-scope HID discovery to the new profile so a Go60 stops feeding
+        // reports into a Glove80 layout (or vice versa). No-op when HID is
+        // disabled or the source isn't running.
+        _layerCoordinator?.SetActiveProfile(profile);
 
         // Auto-load whichever JSON the user last associated with this keyboard.
         // If the previously-loaded layout already fits, leave it alone.
@@ -900,7 +942,9 @@ public partial class MainWindowViewModel : ObservableObject
             Keys[i].ApplyBinding(
                 binding,
                 isSignalMacro: isSignal,
-                isUntrackable: untrackableSet.Contains((layer.Index, i)),
+                // HID source reports every layer change directly, so the
+                // pink "untrackable" warning is meaningless when it's active.
+                isUntrackable: !IsHidSourceActive && untrackableSet.Contains((layer.Index, i)),
                 targetLayer: targetLayer,
                 targetLayerName: targetLayerName,
                 profileId: _profile.Id,
@@ -1279,7 +1323,7 @@ public partial class MainWindowViewModel : ObservableObject
         IsLiveHighlightingEnabled = !IsLiveHighlightingEnabled;
         PersistSetting(s2 => s2 with { LiveKeyHighlighting = IsLiveHighlightingEnabled });
 
-        if (IsLiveHighlightingEnabled && !OperatingSystem.IsLinux())
+        if (IsLiveHighlightingEnabled)
             StartKeyEventTracking();
         else
             StopKeyEventTracking();
@@ -1287,28 +1331,58 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void StartKeyEventTracking()
     {
-        if (_keyEventSource is not null) return;
-        if (_hookProvider is null) return;
+        if (_layerCoordinator is not null) return;
         // Re-arm the accessibility-prompt latch on every start so a later
         // failure (perms revoked at runtime, hook restart) can prompt again.
         _accessibilityDialogShown = false;
-        try
+
+        HotkeyLayerTrackerLayerSource? hotkeyWrapper = null;
+        if (_hookProvider is not null)
         {
-            var source = new SharpHookKeyEventSource(_hookProvider);
-            source.HookFailed += OnHookFailed;
-            _keyEventSource = source;
-            _tracker = new HotkeyLayerTracker(_keyEventSource, _mergedSignalTable);
-            _tracker.LayerChanged += OnLayerChangedFromHook;
-            _tracker.KeyObserved += OnKeyObservedFromHook;
-            _keyEventSource.Start();
+            try
+            {
+                var source = new SharpHookKeyEventSource(_hookProvider);
+                source.HookFailed += OnHookFailed;
+                _keyEventSource = source;
+                _tracker = new HotkeyLayerTracker(_keyEventSource, _mergedSignalTable);
+                _tracker.KeyObserved += OnKeyObservedFromHook;
+                _keyEventSource.Start();
+                hotkeyWrapper = new HotkeyLayerTrackerLayerSource(_tracker);
+            }
+            catch (Exception ex)
+            {
+                DiagnosticLog.Error("MainVM", $"SharpHook init failed: {ex.Message}");
+                _keyEventSource?.Dispose();
+                _keyEventSource = null;
+                _tracker = null;
+                hotkeyWrapper = null;
+            }
         }
-        catch (Exception ex)
-        {
-            DiagnosticLog.Error("MainVM", $"StartKeyEventTracking failed: {ex.Message}");
-            _keyEventSource?.Dispose();
-            _keyEventSource = null;
-            _tracker = null;
-        }
+
+        // Raw HID is platform-agnostic and doesn't need accessibility perms,
+        // so it spins up regardless of the SharpHook outcome above. The
+        // profile filter scopes discovery to the user's selected keyboard
+        // (both Moergo boards share VID:PID, so we'd otherwise latch onto
+        // whichever is enumerated first).
+        //
+        // Per-OS impl: HidSharp's macOS backend doesn't see BLE-HoGP devices
+        // and Linux is out of HidSharp's hidraw path on some distros, so we
+        // use a native impl on each non-Windows platform. Windows keeps
+        // HidSharp because SetupDi enumerates BLE+USB uniformly.
+        ILayerSource hidSource = OperatingSystem.IsMacOS()
+            ? new MacRawHidLayerSource(_profile)
+            : OperatingSystem.IsLinux()
+                ? new LinuxRawHidLayerSource(_profile)
+                : new RawHidLayerSource(_profile);
+
+        _layerCoordinator = new LayerSourceCoordinator(hidSource, hotkeyWrapper, _layerSourceMode);
+        _layerCoordinator.ActiveLayerChanged += OnActiveLayerChanged;
+        _layerCoordinator.ActiveKeyPositionEvent += OnKeyPositionFromHid;
+        _layerCoordinator.ActiveSourceChanged += OnActiveSourceChanged;
+        _layerCoordinator.Start();
+        // Initial label sync — the coordinator may already have settled the
+        // active source before our subscription was attached above.
+        OnActiveSourceChanged();
     }
 
     private void OnHookFailed(Exception ex)
@@ -1321,9 +1395,16 @@ public partial class MainWindowViewModel : ObservableObject
 
     private void StopKeyEventTracking()
     {
+        if (_layerCoordinator is not null)
+        {
+            _layerCoordinator.ActiveLayerChanged -= OnActiveLayerChanged;
+            _layerCoordinator.ActiveKeyPositionEvent -= OnKeyPositionFromHid;
+            _layerCoordinator.ActiveSourceChanged -= OnActiveSourceChanged;
+            _layerCoordinator.Dispose();
+            _layerCoordinator = null;
+        }
         if (_tracker is not null)
         {
-            _tracker.LayerChanged -= OnLayerChangedFromHook;
             _tracker.KeyObserved -= OnKeyObservedFromHook;
             _tracker.Dispose();
             _tracker = null;
@@ -1332,16 +1413,79 @@ public partial class MainWindowViewModel : ObservableObject
             sh.HookFailed -= OnHookFailed;
         _keyEventSource?.Dispose();
         _keyEventSource = null;
+        IsHidSourceActive = false;
+        LayerSourceHint = "";
     }
 
-    private void OnLayerChangedFromHook(int layer)
+    private void OnActiveLayerChanged(int layer)
     {
         if (!IsAutoLayerSwitchEnabled) return;
         Avalonia.Threading.Dispatcher.UIThread.Post(() => ApplyActiveLayer(layer));
     }
 
+    private void OnActiveSourceChanged()
+    {
+        if (_layerCoordinator is null) return;
+        var hidActive = _layerCoordinator.IsHidActive;
+        var label = _layerCoordinator.ActiveSourceLabel;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            var flipped = IsHidSourceActive != hidActive;
+            IsHidSourceActive = hidActive;
+            LayerSourceHint = string.IsNullOrEmpty(label)
+                ? ""
+                : Loc.Instance.Format("Status_LayerSourceHintFormat", label);
+            // Pink "untrackable" overlays are gated on !IsHidSourceActive; rebuild
+            // the per-key state so the change takes effect immediately.
+            if (flipped) ApplyActiveLayer(ActiveLayerIndex);
+            // The "N layer switches not tracked" suffix only applies when
+            // SharpHook is the source — HID reports every layer change, so
+            // recompose to drop/restore that suffix on flips.
+            if (flipped && _loadStatusBase is not null)
+                StatusMessage = ComposeLoadStatus();
+        });
+    }
+
+    private string ComposeLoadStatus()
+    {
+        var s = _loadStatusBase ?? "";
+        if (_untrackable.Count > 0 && !IsHidSourceActive)
+            s += " — " + Loc.Instance.Format("Status_UntrackableLayersFormat", _untrackable.Count);
+        return s;
+    }
+
+    /// <summary>
+    /// Press-highlight path for the HID source. Bypasses _zmkLookup entirely
+    /// — the firmware reports the physical matrix position so we go straight
+    /// to <see cref="Keys"/>[position]. No modifier-grace logic needed
+    /// (HID never reports synthesized modifiers as separate events).
+    /// </summary>
+    private void OnKeyPositionFromHid(int position, bool pressed)
+    {
+        if (!pressed) return;
+        if (position < 0 || position >= Keys.Count) return;
+        var vm = Keys[position];
+        Avalonia.Threading.Dispatcher.UIThread.Post(() => PulseKeyPress(vm));
+    }
+
+    /// <summary>Called by SettingsViewModel when the user picks a different layer source mode.</summary>
+    public void SetLayerSourceMode(string mode)
+    {
+        if (string.IsNullOrWhiteSpace(mode)) return;
+        if (mode == _layerSourceMode) return;
+        _layerSourceMode = mode;
+        PersistSetting(s => s with { LayerSource = mode });
+        _layerCoordinator?.SetMode(mode);
+    }
+
+    public string LayerSourceMode => _layerSourceMode;
+
     private void OnKeyObservedFromHook(KeyEvent ev)
     {
+        // HID-position highlights take precedence whenever the HID source is
+        // active — running both pipelines would double-pulse on every press.
+        if (IsHidSourceActive) return;
+
         var modCat = CategoryForModifier(ev.Keycode);
 
         if (ev.Kind == KeyEventKind.Released)

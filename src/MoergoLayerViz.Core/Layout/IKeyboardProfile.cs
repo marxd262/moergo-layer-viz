@@ -27,4 +27,20 @@ public interface IKeyboardProfile
     /// is authoritative and must match the JSON binding order.
     /// </summary>
     IReadOnlyList<KeyPosition> Keys { get; }
+
+    /// <summary>
+    /// True when the given USB HID identifiers describe a device of *this*
+    /// keyboard family. Used by the Raw HID layer source to ignore reports
+    /// from a different connected board (e.g. Go60 plugged in alongside a
+    /// Glove80 — without this filter, layer reports would cross-contaminate).
+    /// <para>
+    /// Both Moergo boards register under the shared pid.codes ZMK identifier
+    /// (VID 0x16C0 / PID 0x27DB), so the implementation also has to compare
+    /// the product name. Use a *case-insensitive prefix* match — the suffix
+    /// differs by transport (USB exposes "Go60 Left" because the cable side
+    /// is the host; BLE exposes "Go60" because only the central is visible)
+    /// and could change between firmware revisions.
+    /// </para>
+    /// </summary>
+    bool MatchesHidDevice(int vendorId, int productId, string? productName);
 }

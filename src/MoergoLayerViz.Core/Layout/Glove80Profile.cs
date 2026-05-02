@@ -57,6 +57,12 @@ public sealed class Glove80Profile : IKeyboardProfile
 
     public IReadOnlyList<KeyPosition> Keys { get; } = BuildKeys();
 
+    public bool MatchesHidDevice(int vendorId, int productId, string? productName) =>
+        vendorId == ZmkHidIds.VendorId
+        && productId == ZmkHidIds.ProductId
+        && productName is not null
+        && productName.StartsWith("Glove80", StringComparison.OrdinalIgnoreCase);
+
     private static IReadOnlyList<KeyPosition> BuildKeys()
     {
         // Six columns per hand, outer-to-inner. HasRow0 / HasRow5 gate the

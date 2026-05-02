@@ -79,7 +79,7 @@
   <data name="Status_NoLayoutLoaded"><value>No layout loaded — click the folder icon to open a Moergo JSON export</value></data>
   <data name="Status_Loaded"><value>Loaded {0} ({1} layers)</value></data>
   <data name="Status_LoadErrorFormat"><value>Load failed: {0}</value></data>
-  <data name="Status_UntrackableLayersFormat"><value>{0} layer switches can't be tracked — convert them to signal macros to enable auto layer switching</value></data>
+  <data name="Status_UntrackableLayersFormat"><value>{0} untracked layer switches (need signal macros)</value></data>
   <data name="Status_DiagnosticsCopied"><value>Diagnostics copied to clipboard</value></data>
   <data name="Status_KeyboardSwitched"><value>Keyboard switched to {0}</value></data>
   <data name="Status_KeyboardSwitchedUnloaded"><value>Keyboard switched to {0} — reload your layout</value></data>
@@ -137,6 +137,12 @@
   <data name="Settings_LayerSignalsNone"><value>(none)</value></data>
   <data name="Settings_Layout"><value>Layout</value></data>
   <data name="Settings_TopHand"><value>Top hand</value></data>
+  <data name="Settings_LayerSource"><value>Layer source</value></data>
+  <data name="Settings_LayerSourceHint"><value>How the app learns about layer changes. Auto prefers Raw HID (firmware-reported, no signal macros required) when a HID-enabled board is connected and falls back to signal macros via the OS keyboard hook otherwise.</value></data>
+  <data name="Settings_LayerSource_Auto"><value>Auto (prefer Raw HID)</value></data>
+  <data name="Settings_LayerSource_RawHid"><value>Raw HID only</value></data>
+  <data name="Settings_LayerSource_SharpHook"><value>Signal macros only</value></data>
+  <data name="Status_LayerSourceHintFormat"><value>via {0}</value></data>
   <data name="Settings_CheckForUpdates"><value>Check for updates</value></data>
   <data name="Settings_Checking"><value>Checking…</value></data>
   <data name="Settings_UpToDate"><value>You're on the latest version.</value></data>

@@ -108,4 +108,13 @@ public record UserSettings
 
     /// <summary>Which half goes on top in stacked mode. "Left" or "Right".</summary>
     public string StackedTopHand { get; init; } = "Left";
+
+    /// <summary>
+    /// How to source layer state. "Auto" (default) prefers Raw HID when a
+    /// matching device is connected and falls back to SharpHook + signal
+    /// macros otherwise. "RawHid" requires a HID-enabled board and shows a
+    /// "searching" status when none is connected. "SharpHook" ignores HID
+    /// entirely and uses only the F-key signal-macro path.
+    /// </summary>
+    public string LayerSource { get; init; } = "Auto";
 }

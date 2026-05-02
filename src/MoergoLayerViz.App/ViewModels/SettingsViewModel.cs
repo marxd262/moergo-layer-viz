@@ -8,6 +8,7 @@ using Avalonia.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MoergoLayerViz.App.Localization;
+using MoergoLayerViz.App.Services;
 using MoergoLayerViz.Core.Settings;
 
 namespace MoergoLayerViz.App.ViewModels;
@@ -31,8 +32,38 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _mainViewModel.PropertyChanged += OnMainPropertyChanged;
         _mainViewModel.Layers.CollectionChanged += OnLayersCollectionChanged;
         _mainViewModel.ManualLayerSignalsChanged += RebuildLayerEntries;
+        LayerSourceChoices = BuildLayerSourceChoices();
         RebuildLayerEntries();
     }
+
+    /// <summary>(label, value) pair for the layer-source dropdown. Label is pre-localized; value is the canonical mode string persisted in settings.</summary>
+    public sealed record LayerSourceChoice(string Label, string Value);
+
+    /// <summary>Choices for the layer-source dropdown. Built once at construction; reopen Settings after a culture change to pick up new labels.</summary>
+    public IReadOnlyList<LayerSourceChoice> LayerSourceChoices { get; }
+
+    private static IReadOnlyList<LayerSourceChoice> BuildLayerSourceChoices() => new[]
+    {
+        new LayerSourceChoice(Loc.Instance["Settings_LayerSource_Auto"], LayerSourceCoordinator.ModeAuto),
+        new LayerSourceChoice(Loc.Instance["Settings_LayerSource_RawHid"], LayerSourceCoordinator.ModeRawHid),
+        new LayerSourceChoice(Loc.Instance["Settings_LayerSource_SharpHook"], LayerSourceCoordinator.ModeSharpHook),
+    };
+
+    /// <summary>Currently selected layer-source mode. Two-way bound; setter persists + reconfigures the coordinator via the main VM.</summary>
+    public LayerSourceChoice? SelectedLayerSourceChoice
+    {
+        get => LayerSourceChoices.FirstOrDefault(c => c.Value == _mainViewModel.LayerSourceMode)
+               ?? LayerSourceChoices[0];
+        set
+        {
+            if (value is null) return;
+            _mainViewModel.SetLayerSourceMode(value.Value);
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>"via Raw HID (Go60 Left)" / "via signal macros" — currently active source. Updated live as the coordinator hot-swaps.</summary>
+    public string LayerSourceStatus => _mainViewModel.LayerSourceHint;
 
     /// <summary>
     /// Detaches the long-lived <see cref="MainWindowViewModel"/> event hooks
@@ -84,6 +115,9 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         Enumerable.Range(13, 12).Select(n => $"F{n}")
             .Concat(Enumerable.Range(1, 12).Select(n => $"F{n}"))
             .ToArray();
+
+    /// <summary>False on Linux — Wayland blocks process-global hooks from unfocused windows, so the show/hide hotkey isn't wired and its UI is hidden.</summary>
+    public static bool IsGlobalHotkeySupported { get; } = !OperatingSystem.IsLinux();
 
     /// <summary>Top-hand picker choices for stacked layout. Mirrors svalboard's UX.</summary>
     public IReadOnlyList<string> AvailableTopHands { get; } = new[] { "Left", "Right" };
@@ -150,6 +184,10 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             // Header + per-profile content (color overrides, manual signals)
             // are scoped to the active profile.
             RebuildLayerEntries();
+        }
+        else if (e.PropertyName == nameof(MainWindowViewModel.LayerSourceHint))
+        {
+            OnPropertyChanged(nameof(LayerSourceStatus));
         }
     }
 

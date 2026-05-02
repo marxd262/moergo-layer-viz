@@ -76,7 +76,7 @@
   <data name="Status_NoLayoutLoaded"><value>Geen layout geladen — klik op het mappictogram om een Moergo JSON te openen</value></data>
   <data name="Status_Loaded"><value>Geladen: {0} ({1} lagen)</value></data>
   <data name="Status_LoadErrorFormat"><value>Laden mislukt: {0}</value></data>
-  <data name="Status_UntrackableLayersFormat"><value>{0} laagwissels kunnen niet gevolgd worden — zet ze om naar signaalmacro's voor automatische laagwissel</value></data>
+  <data name="Status_UntrackableLayersFormat"><value>{0} ongevolgde laagwissels (vereisen signaalmacro's)</value></data>
   <data name="Status_DiagnosticsCopied"><value>Diagnose naar klembord gekopieerd</value></data>
   <data name="Status_KeyboardSwitched"><value>Toetsenbord gewisseld naar {0}</value></data>
   <data name="Status_KeyboardSwitchedUnloaded"><value>Toetsenbord gewisseld naar {0} — laad de layout opnieuw</value></data>
@@ -130,6 +130,12 @@
   <data name="Settings_LayerSignalsNone"><value>(geen)</value></data>
   <data name="Settings_Layout"><value>Indeling</value></data>
   <data name="Settings_TopHand"><value>Bovenste helft</value></data>
+  <data name="Settings_LayerSource"><value>Laagbron</value></data>
+  <data name="Settings_LayerSourceHint"><value>Hoe de app laagwissels detecteert. Auto kiest Raw HID (door de firmware gemeld, geen signaalmacro's nodig) wanneer een HID-toetsenbord verbonden is en valt anders terug op signaalmacro's via de OS-toetsenbordhook.</value></data>
+  <data name="Settings_LayerSource_Auto"><value>Auto (voorkeur Raw HID)</value></data>
+  <data name="Settings_LayerSource_RawHid"><value>Alleen Raw HID</value></data>
+  <data name="Settings_LayerSource_SharpHook"><value>Alleen signaalmacro's</value></data>
+  <data name="Status_LayerSourceHintFormat"><value>via {0}</value></data>
   <data name="Settings_CheckForUpdates"><value>Controleer op updates</value></data>
   <data name="Settings_Checking"><value>Bezig met controleren…</value></data>
   <data name="Settings_UpToDate"><value>Je gebruikt de nieuwste versie.</value></data>

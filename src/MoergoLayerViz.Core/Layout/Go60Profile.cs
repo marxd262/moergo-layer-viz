@@ -31,6 +31,12 @@ public sealed class Go60Profile : IKeyboardProfile
 
     public IReadOnlyList<KeyPosition> Keys { get; } = BuildKeys();
 
+    public bool MatchesHidDevice(int vendorId, int productId, string? productName) =>
+        vendorId == ZmkHidIds.VendorId
+        && productId == ZmkHidIds.ProductId
+        && productName is not null
+        && productName.StartsWith("Go60", StringComparison.OrdinalIgnoreCase);
+
     private static IReadOnlyList<KeyPosition> BuildKeys()
     {
         // Six columns per hand, outer-to-inner. Each column has an x
