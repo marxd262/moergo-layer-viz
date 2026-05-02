@@ -144,7 +144,7 @@ Build, flash, plug in. The app picks the board up automatically — matching is 
 
 ### Glove80
 
-I'm working on a Glove80 equivalent. The repo URL will be added here once it's working. Until then, Glove80 users can stay on the signal-macro path. The steps to enable this on the Glove80 should be the same I think, but when I have it running I will update this part.
+The Glove80 setup uses the same two modules: [ovandongen/glove80-zmk-config-west](https://github.com/ovandongen/glove80-zmk-config-west). Build and flash the same way as the Go60 — `config/west.yml` pulls in `zzeneg/zmk-raw-hid` + `srwi/zmk-keypeek-layer-notifier`, and `CONFIG_RAW_HID=y` in the shield config enables the endpoint. The app picks up either board automatically.
 
 ---
 
