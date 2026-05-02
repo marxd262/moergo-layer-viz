@@ -298,3 +298,9 @@ docs/parsing.md           Canonical signal-macro / hold-tap / layer-signal
 
 - [Moergo](https://www.moergo.com/) for the GO60 and Glove80 keyboards.
 - [SharpHook](https://github.com/TolikPylypchuk/SharpHook) and [libuiohook](https://github.com/kwhat/libuiohook) for the global keyboard hook.
+
+---
+
+## License
+
+MIT — see [LICENSE](LICENSE). Free to use, modify, and redistribute, including commercially. Just keep the copyright notice.
