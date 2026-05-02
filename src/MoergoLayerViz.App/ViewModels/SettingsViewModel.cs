@@ -116,9 +116,6 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
             .Concat(Enumerable.Range(1, 12).Select(n => $"F{n}"))
             .ToArray();
 
-    /// <summary>False on Linux — Wayland blocks process-global hooks from unfocused windows, so the show/hide hotkey isn't wired and its UI is hidden.</summary>
-    public static bool IsGlobalHotkeySupported { get; } = !OperatingSystem.IsLinux();
-
     /// <summary>Top-hand picker choices for stacked layout. Mirrors svalboard's UX.</summary>
     public IReadOnlyList<string> AvailableTopHands { get; } = new[] { "Left", "Right" };
 
