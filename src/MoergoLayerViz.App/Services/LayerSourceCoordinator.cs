@@ -94,6 +94,7 @@ public sealed class LayerSourceCoordinator : IDisposable
         {
             case RawHidLayerSource win: win.SetProfile(profile); break;
             case MacRawHidLayerSource mac: mac.SetProfile(profile); break;
+            case LinuxRawHidLayerSource linux: linux.SetProfile(profile); break;
         }
     }
 

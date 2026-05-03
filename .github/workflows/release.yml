@@ -117,9 +117,54 @@ jobs:
           path: MoergoLayerViz-*-macos-${{ steps.ver.outputs.arch }}.zip
           if-no-files-found: error
 
+  build-linux:
+    name: Build Linux (linux-x64)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=0.0.0-dev.${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish
+        shell: bash
+        run: |
+          dotnet publish src/MoergoLayerViz.App/MoergoLayerViz.App.csproj \
+            -c Release -r linux-x64 --self-contained true \
+            -p:PublishSingleFile=false \
+            -p:Version=${{ steps.ver.outputs.version }}
+
+      - name: Package tarball
+        shell: bash
+        run: |
+          # tar (not zip) preserves the +x bit on the launcher binary so
+          # users don't have to chmod after extracting.
+          publish="src/MoergoLayerViz.App/bin/Release/net10.0/linux-x64/publish"
+          tarball="MoergoLayerViz-${{ steps.ver.outputs.version }}-linux-x64.tar.gz"
+          tar -czf "$tarball" -C "$publish" .
+          ls -lh "$tarball"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-x64
+          path: MoergoLayerViz-*-linux-x64.tar.gz
+          if-no-files-found: error
+
   release:
     name: Publish GitHub Release
-    needs: [build-windows, build-macos]
+    needs: [build-windows, build-macos, build-linux]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
@@ -136,5 +181,6 @@ jobs:
         with:
           files: |
             artifacts/MoergoLayerViz-*.zip
+            artifacts/MoergoLayerViz-*.tar.gz
           generate_release_notes: true
           fail_on_unmatched_files: true

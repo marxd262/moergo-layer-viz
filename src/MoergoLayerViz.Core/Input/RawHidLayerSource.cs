@@ -13,9 +13,10 @@ namespace MoergoLayerViz.Core.Input;
 ///
 /// <para>HidSharp's macOS backend only enumerates legacy IOKit USB HID and
 /// misses BLE-HoGP devices, so macOS uses
-/// <see cref="MacRawHidLayerSource"/> instead. This type is selected for
-/// Windows where SetupDi enumerates BLE and USB HID uniformly via the HID
-/// class GUID.</para>
+/// <see cref="MacRawHidLayerSource"/> instead; Linux uses
+/// <see cref="LinuxRawHidLayerSource"/> against <c>/dev/hidrawN</c>. This
+/// type is selected for Windows where SetupDi enumerates BLE and USB HID
+/// uniformly via the HID class GUID.</para>
 ///
 /// <para>Hot-plug: subscribes to <see cref="DeviceList.Local"/> changes so a
 /// device appearing or disappearing wakes the read loop without waiting out

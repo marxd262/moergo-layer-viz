@@ -98,8 +98,9 @@
 
                     <!-- Global show/hide hotkey. Single key only (no modifier UI today);
                          the chosen key is auto-excluded from the layer-key picker on the
-                         Layers tab so the two can't collide. -->
-                    <StackPanel Spacing="6">
+                         Layers tab so the two can't collide. Hidden on Linux —
+                         Wayland blocks global hooks from unfocused windows. -->
+                    <StackPanel Spacing="6" IsVisible="{Binding IsGlobalHotkeySupported}">
                         <TextBlock Text="{Binding [Settings_GlobalHotkey], Source={StaticResource Loc}}"
                                    FontSize="14" FontWeight="SemiBold" Foreground="#CDD6F4" />
                         <TextBlock Text="{Binding [Settings_GlobalHotkeyHint], Source={StaticResource Loc}}"
@@ -110,7 +111,7 @@
                                   SelectedItem="{Binding HotkeyKey, Mode=TwoWay}" />
                     </StackPanel>
 
-                    <Border Height="1" Background="#313244" />
+                    <Border Height="1" Background="#313244" IsVisible="{Binding IsGlobalHotkeySupported}" />
 
                     <!-- Layout: top-hand picker for stacked mode. Greyed out
                          until the user enables stacked layout via the toolbar. -->

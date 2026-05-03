@@ -580,7 +580,10 @@ public partial class MainWindowViewModel : ObservableObject
             StatusMessage = Loc.Instance["Status_NoLayoutLoaded"];
         }
 
-        if (IsLiveHighlightingEnabled && !OperatingSystem.IsLinux())
+        // Live tracking is no longer Linux-blocked: the HID source works
+        // without any global hook, and StartKeyEventTracking() internally
+        // skips SharpHook when _hookProvider is null (which it is on Linux).
+        if (IsLiveHighlightingEnabled)
             StartKeyEventTracking();
     }
 
@@ -1362,12 +1365,15 @@ public partial class MainWindowViewModel : ObservableObject
         // (both Moergo boards share VID:PID, so we'd otherwise latch onto
         // whichever is enumerated first).
         //
-        // Per-OS impl: HidSharp's macOS backend doesn't see BLE-HoGP devices,
-        // so macOS uses a native IOKit impl. Windows keeps HidSharp because
-        // SetupDi enumerates BLE+USB uniformly via the HID class GUID.
+        // Per-OS impl: HidSharp's macOS backend doesn't see BLE-HoGP devices
+        // and Linux is out of HidSharp's hidraw path on some distros, so we
+        // use a native impl on each non-Windows platform. Windows keeps
+        // HidSharp because SetupDi enumerates BLE+USB uniformly.
         ILayerSource hidSource = OperatingSystem.IsMacOS()
             ? new MacRawHidLayerSource(_profile)
-            : new RawHidLayerSource(_profile);
+            : OperatingSystem.IsLinux()
+                ? new LinuxRawHidLayerSource(_profile)
+                : new RawHidLayerSource(_profile);
 
         _layerCoordinator = new LayerSourceCoordinator(hidSource, hotkeyWrapper, _layerSourceMode);
         _layerCoordinator.ActiveLayerChanged += OnActiveLayerChanged;
