@@ -58,6 +58,7 @@ fi
 echo "[1/4] Publishing ($CONFIG, $RID, self-contained${VERSION:+, v$VERSION})..."
 dotnet publish "$PROJECT" \
   -c "$CONFIG" -r "$RID" --self-contained true \
+  -f net10.0 \
   -p:PublishSingleFile=false \
   ${VERSION_ARGS[@]+"${VERSION_ARGS[@]}"} \
   --nologo
