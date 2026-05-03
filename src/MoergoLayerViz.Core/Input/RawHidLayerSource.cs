@@ -36,6 +36,11 @@ public sealed class RawHidLayerSource : ILayerSource
     private readonly ManualResetEventSlim _rescan = new(false);
     // Volatile so the read thread sees profile swaps without locking.
     private volatile IKeyboardProfile? _profile;
+    // Dedupe keys for discovery diagnostics so the 2s rescan loop doesn't
+    // flood log.txt when nothing matches. Cleared on successful connect so a
+    // future disconnect re-logs the next enumeration.
+    private string? _lastEnumerationKey;
+    private readonly HashSet<string> _descriptorErrorReported = new();
 
     public RawHidLayerSource(IKeyboardProfile? profile = null)
     {
@@ -127,6 +132,8 @@ public sealed class RawHidLayerSource : ILayerSource
                     : $"Raw HID ({productName})";
                 DiagnosticLog.Info("RawHid", $"Connected: {_sourceName}");
                 SetConnected(true);
+                _lastEnumerationKey = null;
+                _descriptorErrorReported.Clear();
 
                 while (!ct.IsCancellationRequested)
                 {
@@ -196,8 +203,8 @@ public sealed class RawHidLayerSource : ILayerSource
 
     private HidDevice? TryFindDevice()
     {
-        IEnumerable<HidDevice> devices;
-        try { devices = DeviceList.Local.GetHidDevices(); }
+        HidDevice[] devices;
+        try { devices = DeviceList.Local.GetHidDevices().ToArray(); }
         catch (Exception ex)
         {
             DiagnosticLog.Debug("RawHid", $"GetHidDevices failed: {ex.Message}");
@@ -205,6 +212,7 @@ public sealed class RawHidLayerSource : ILayerSource
         }
 
         var profile = _profile;
+        var profileMatches = new List<HidDevice>();
         foreach (var d in devices)
         {
             // Cheap filters first: VID/PID + product-name prefix via the
@@ -217,12 +225,62 @@ public sealed class RawHidLayerSource : ILayerSource
                 if (!profile.MatchesHidDevice(d.VendorID, d.ProductID, name))
                     continue;
             }
+            profileMatches.Add(d);
             if (HasRawHidUsage(d)) return d;
         }
+
+        // Diagnostics: when nothing matched, dump what we *did* see so the
+        // user (or me, in a triage session) can tell whether the device is
+        // simply absent from enumeration vs present but missing the FF60/61
+        // usage. Critical for BLE-on-Windows debugging where Windows' HoGP
+        // driver sometimes drops vendor-defined HID collections. Dedupe by
+        // content so a 2s rescan loop doesn't flood the log.
+        LogEnumerationOnce(devices, profileMatches);
         return null;
     }
 
-    private static bool HasRawHidUsage(HidDevice device)
+    private void LogEnumerationOnce(HidDevice[] all, List<HidDevice> profileMatches)
+    {
+        var summaries = profileMatches.Count > 0 ? profileMatches : SelectMoergoVidPid(all);
+        var key = string.Join("|", summaries.Select(d => $"{d.VendorID:X4}:{d.ProductID:X4}@{TryGetDevicePath(d)}"));
+        if (key == _lastEnumerationKey) return;
+        _lastEnumerationKey = key;
+
+        if (summaries.Count == 0)
+        {
+            DiagnosticLog.Info("RawHid",
+                $"Discovery: no Moergo-VID HID device found among {all.Length} enumerated HID device(s). " +
+                "If the keyboard is connected over Bluetooth, Windows' HoGP driver may not be exposing it as a HID device — check Device Manager > Human Interface Devices.");
+            return;
+        }
+
+        foreach (var d in summaries)
+        {
+            string? name = null;
+            try { name = d.GetProductName(); } catch { }
+            DiagnosticLog.Info("RawHid",
+                $"Discovery: VID={d.VendorID:X4} PID={d.ProductID:X4} name=\"{name ?? "?"}\" path={TryGetDevicePath(d)} — " +
+                "profile-matched but FF60/61 usage not found in report descriptor (or descriptor read failed).");
+        }
+    }
+
+    private static List<HidDevice> SelectMoergoVidPid(HidDevice[] all)
+    {
+        // VID 0x16C0 / PID 0x27DB is Moergo's (and many ZMK boards') VID/PID
+        // pair. If the user's profile filter rejected the device by name,
+        // surfacing the VID/PID match here points the finger at the name.
+        var hits = new List<HidDevice>();
+        foreach (var d in all)
+            if (d.VendorID == 0x16C0 && d.ProductID == 0x27DB) hits.Add(d);
+        return hits;
+    }
+
+    private static string TryGetDevicePath(HidDevice device)
+    {
+        try { return device.DevicePath; } catch { return "(unknown)"; }
+    }
+
+    private bool HasRawHidUsage(HidDevice device)
     {
         try
         {
@@ -238,11 +296,16 @@ public sealed class RawHidLayerSource : ILayerSource
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Many HID devices refuse descriptor reads (permission denied,
-            // exclusive-access, plain unsupported on the platform). These are
-            // not our device — skip silently.
+            // Many unrelated HID devices refuse descriptor reads (permission
+            // denied, exclusive-access, plain unsupported). For a
+            // profile-matched device, though, this is the failure mode that
+            // matters — log it once per device path so we know to investigate.
+            var key = TryGetDevicePath(device);
+            if (_descriptorErrorReported.Add(key))
+                DiagnosticLog.Info("RawHid",
+                    $"Descriptor read failed for VID={device.VendorID:X4} PID={device.ProductID:X4} path={key}: {ex.GetType().Name}: {ex.Message}");
         }
         return false;
     }
