@@ -12,28 +12,37 @@ using Windows.Storage.Streams;
 namespace MoergoLayerViz.App.Services;
 
 /// <summary>
-/// Raw-HID layer source for **Windows over Bluetooth LE**, going around the
-/// Windows HoGP (HID-over-GATT) driver via direct WinRT GATT calls.
+/// Raw-HID layer source for **Windows over Bluetooth LE** via direct WinRT
+/// GATT calls.
 ///
-/// <para>The HoGP driver only creates child PnP HID device nodes for standard
-/// HID collections (keyboard / mouse / consumer). ZMK's vendor-defined
-/// FF60/61 collection has no child node, so HidSharp (and any code going
-/// through the Windows HID class GUID) cannot see it on a BLE-connected
-/// board. macOS hits the equivalent via <see cref="MacRawHidLayerSource"/>;
-/// this is the Windows BLE counterpart.</para>
+/// <para><b>Currently dormant on Windows.</b> The HoGP kernel driver claims
+/// the standard HID GATT service (UUID 0x1812) exclusively and refuses even
+/// <see cref="GattSharingMode.SharedReadAndWrite"/> opens with
+/// <c>AccessDenied</c>. Empirically verified on Windows 10.0.26100; matches
+/// reports in bleak #599 and the Nordic DevZone "HID Service access denied"
+/// thread. There is no user-mode escape hatch on Windows for 0x1812.</para>
 ///
-/// <para>USB Raw HID continues to use <see cref="RawHidLayerSource"/> on
-/// Windows; this source is paired with that one inside
-/// <see cref="WindowsHidCompositeLayerSource"/> so the user doesn't have to
-/// pick a transport.</para>
+/// <para>The fix has to come from the firmware: <c>zzeneg/zmk-raw-hid</c>
+/// currently registers its raw HID reports inside <c>BT_UUID_HIDS</c>
+/// (i.e. 0x1812). Exposing them in parallel under a custom vendor service
+/// UUID would side-step HoGP entirely, and this source would then need only
+/// a UUID-constant swap to come back to life.</para>
 ///
-/// <para>Approach: enumerate paired BLE devices, find ones matching the active
-/// profile, open the GATT HID service (UUID 0x1812), subscribe to notifications
-/// on every Notify-capable Report characteristic (UUID 0x2A4D), and dispatch
-/// every incoming payload through <see cref="RawHidProtocol"/>. The protocol
-/// parsers reject non-FF60 reports by content (first byte != 0xFF / 0xF1), so
-/// keyboard/consumer reports are filtered without us walking the Report Map
-/// to identify the right Report ID — a deliberate v1 simplification.</para>
+/// <para>For now the loop probes once: it enumerates a matching device, opens
+/// the HID service, and on the expected <c>AccessDenied</c> logs a single
+/// explanatory warning and exits permanently. USB Raw HID still works through
+/// <see cref="RawHidLayerSource"/>; SharpHook covers BLE in the meantime. The
+/// composite source (<see cref="WindowsHidCompositeLayerSource"/>) keeps both
+/// USB and this dormant BLE leg wired so that flipping the firmware UUID is a
+/// one-line change here.</para>
+///
+/// <para>Approach when active: enumerate paired BLE devices, find ones matching
+/// the active profile, open the HID GATT service, subscribe to notifications on
+/// every Notify-capable Report characteristic (UUID 0x2A4D), and dispatch every
+/// incoming payload through <see cref="RawHidProtocol"/>. The protocol parsers
+/// reject non-FF60 reports by content (first byte != 0xFF / 0xF1), so
+/// keyboard/consumer reports are filtered without us walking the Report Map to
+/// identify the right Report ID — a deliberate v1 simplification.</para>
 /// </summary>
 [SupportedOSPlatform("windows10.0.19041.0")]
 internal sealed class WindowsBleRawHidLayerSource : ILayerSource
@@ -131,16 +140,29 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
                 }
                 hidService = sr.Services[0];
 
-                // The Windows HoGP kernel driver opens 0x1812 exclusively, which
-                // is the documented cause of AccessDenied on subsequent
-                // GetCharacteristics calls. SharedReadAndWrite is the WinRT
+                // HoGP holds 0x1812 exclusively; SharedReadAndWrite is the WinRT
                 // escape hatch for "another driver already owns this; let me
-                // read alongside" — worth one shot before declaring the
-                // transport unusable. If this still fails, the diagnosis that
-                // 0x1812 is hard-locked to user-mode is confirmed.
+                // read alongside" but Windows refuses it for the HID service.
+                // On AccessDenied we exit the loop permanently — retrying gives
+                // the same answer every time and just spams the log. Any other
+                // failure is treated as transient (rescan).
                 var openStatus = await hidService.OpenAsync(GattSharingMode.SharedReadAndWrite);
-                DiagnosticLog.Info("WinBleHid",
-                    $"hidService.OpenAsync(SharedReadAndWrite) → {openStatus}");
+                if (openStatus == GattOpenStatus.AccessDenied)
+                {
+                    DiagnosticLog.Warn("WinBleHid",
+                        "Windows HoGP kernel driver refuses user-mode access to the BLE HID service " +
+                        "(0x1812) — raw HID over BLE is unavailable on Windows. SharpHook fallback " +
+                        "covers BLE; USB raw HID still works. This source is going dormant for the " +
+                        "session. Tracking firmware-side fix: expose raw HID under a custom GATT " +
+                        "service UUID in parallel with 0x1812.");
+                    return;
+                }
+                if (openStatus != GattOpenStatus.Success && openStatus != GattOpenStatus.AlreadyOpened)
+                {
+                    DiagnosticLog.Warn("WinBleHid", $"hidService.OpenAsync → {openStatus}; will retry.");
+                    await WaitForRescanOrTimeout(RescanDelayMs, ct);
+                    continue;
+                }
 
                 var charsResult = await hidService.GetCharacteristicsForUuidAsync(
                     GattCharacteristicUuids.Report, BluetoothCacheMode.Uncached);
