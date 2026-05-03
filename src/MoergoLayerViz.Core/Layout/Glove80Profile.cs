@@ -61,7 +61,7 @@ public sealed class Glove80Profile : IKeyboardProfile
         vendorId == ZmkHidIds.VendorId
         && productId == ZmkHidIds.ProductId
         && productName is not null
-        && productName.StartsWith("Glove80", StringComparison.OrdinalIgnoreCase);
+        && productName.Contains("Glove80", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<KeyPosition> BuildKeys()
     {

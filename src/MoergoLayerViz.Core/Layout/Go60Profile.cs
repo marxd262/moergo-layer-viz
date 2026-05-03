@@ -35,7 +35,7 @@ public sealed class Go60Profile : IKeyboardProfile
         vendorId == ZmkHidIds.VendorId
         && productId == ZmkHidIds.ProductId
         && productName is not null
-        && productName.StartsWith("Go60", StringComparison.OrdinalIgnoreCase);
+        && productName.Contains("Go60", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<KeyPosition> BuildKeys()
     {

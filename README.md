@@ -50,22 +50,38 @@ Linux works **only with a board running Raw HID firmware** (see [Firmware suppor
    tar -xzf MoergoLayerViz-*-linux-x64.tar.gz -C ~/Applications/MoergoLayerViz
    ```
 
-2. Install a udev rule so your user can read `/dev/hidraw*` for Moergo's USB VID/PID without root. The ZMK project ships such a rule; the minimal version is:
+2. Grant your user access to the keyboard's `/dev/hidraw*` node. Two steps:
 
-   ```
-   # /etc/udev/rules.d/50-zmk.rules
-   KERNEL=="hidraw*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="27db", TAG+="uaccess", MODE="0660"
-   ```
-
-   Then reload and re-plug the keyboard:
+   **a) Install a udev rule** (one-time, requires sudo):
 
    ```bash
-   sudo udevadm control --reload-rules && sudo udevadm trigger
+   echo 'KERNEL=="hidraw*", ATTRS{idVendor}=="16c0", ATTRS{idProduct}=="27db", TAG+="uaccess", GROUP="plugdev", MODE="0660"' \
+     | sudo tee /etc/udev/rules.d/50-zmk.rules
+   sudo udevadm control --reload-rules
    ```
 
-   If the app logs `EACCES opening /dev/hidrawN` it means this rule isn't applied yet.
+   **b) Add yourself to the `plugdev` group** (one-time, requires re-login):
+
+   ```bash
+   sudo usermod -aG plugdev $USER
+   ```
+
+   Then **log out and log back in** (a new terminal tab is not enough), then re-plug the keyboard. Verify it worked:
+
+   ```bash
+   groups | grep plugdev          # should print your groups including plugdev
+   ls -la /dev/hidraw*            # should show  crw-rw----  root plugdev ...
+   ```
 
 3. Run `./MoergoLayerViz.App`.
+
+**Troubleshooting:** the app logs to `~/.config/MoergoLayerViz/log.txt`. After launch you should see a line like:
+
+```
+INFO  [LinuxRawHid] Connected: Raw HID (MoErgo Go60 Left)
+```
+
+If that line is absent, set `MOERGO_LOG_LEVEL=DEBUG` in your environment before launching and look for `Permission denied` in the log — that means the udev rule or group membership isn't in effect yet. If there are no hidraw lines at all, the keyboard may not be plugged in.
 
 Bluetooth works the same way — `/dev/hidraw*` is transport-agnostic — provided your distro pairs the keyboard as an HID device.
 
@@ -221,10 +237,10 @@ Author the macros directly in Moergo's editor following one of the shapes above.
 ### Common commands
 
 ```bash
-dotnet build                                       # full solution build
-dotnet test                                        # run all xUnit tests (218)
-dotnet run --project src/MoergoLayerViz.App        # launch (Windows / Linux only — see macOS dev notes below)
-scripts/build-mac-app.sh                           # build signed .app bundle (macOS)
+dotnet build                                                                  # full solution build
+dotnet test                                                                   # run all xUnit tests (218)
+dotnet run --project src/MoergoLayerViz.App --framework net10.0              # launch on Linux / Windows
+scripts/build-mac-app.sh                                                      # build signed .app bundle (macOS)
 ```
 
 ### macOS development build
