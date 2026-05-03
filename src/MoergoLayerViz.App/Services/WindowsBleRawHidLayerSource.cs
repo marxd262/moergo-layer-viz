@@ -120,7 +120,8 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
                     continue;
                 }
 
-                var sr = await device.GetGattServicesForUuidAsync(GattServiceUuids.HumanInterfaceDevice);
+                var sr = await device.GetGattServicesForUuidAsync(
+                    GattServiceUuids.HumanInterfaceDevice, BluetoothCacheMode.Uncached);
                 if (sr.Status != GattCommunicationStatus.Success || sr.Services.Count == 0)
                 {
                     DiagnosticLog.Info("WinBleHid",
@@ -130,7 +131,19 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
                 }
                 hidService = sr.Services[0];
 
-                var charsResult = await hidService.GetCharacteristicsForUuidAsync(GattCharacteristicUuids.Report);
+                // The Windows HoGP kernel driver opens 0x1812 exclusively, which
+                // is the documented cause of AccessDenied on subsequent
+                // GetCharacteristics calls. SharedReadAndWrite is the WinRT
+                // escape hatch for "another driver already owns this; let me
+                // read alongside" — worth one shot before declaring the
+                // transport unusable. If this still fails, the diagnosis that
+                // 0x1812 is hard-locked to user-mode is confirmed.
+                var openStatus = await hidService.OpenAsync(GattSharingMode.SharedReadAndWrite);
+                DiagnosticLog.Info("WinBleHid",
+                    $"hidService.OpenAsync(SharedReadAndWrite) → {openStatus}");
+
+                var charsResult = await hidService.GetCharacteristicsForUuidAsync(
+                    GattCharacteristicUuids.Report, BluetoothCacheMode.Uncached);
                 if (charsResult.Status != GattCommunicationStatus.Success)
                 {
                     DiagnosticLog.Warn("WinBleHid",
