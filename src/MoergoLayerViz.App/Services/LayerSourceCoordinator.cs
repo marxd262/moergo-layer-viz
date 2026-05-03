@@ -92,6 +92,9 @@ public sealed class LayerSourceCoordinator : IDisposable
     {
         switch (_hid)
         {
+#if WINDOWS
+            case WindowsHidCompositeLayerSource composite: composite.SetProfile(profile); break;
+#endif
             case RawHidLayerSource win: win.SetProfile(profile); break;
             case MacRawHidLayerSource mac: mac.SetProfile(profile); break;
             case LinuxRawHidLayerSource linux: linux.SetProfile(profile); break;

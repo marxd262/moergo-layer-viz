@@ -1365,15 +1365,22 @@ public partial class MainWindowViewModel : ObservableObject
         // (both Moergo boards share VID:PID, so we'd otherwise latch onto
         // whichever is enumerated first).
         //
-        // Per-OS impl: HidSharp's macOS backend doesn't see BLE-HoGP devices
-        // and Linux is out of HidSharp's hidraw path on some distros, so we
-        // use a native impl on each non-Windows platform. Windows keeps
-        // HidSharp because SetupDi enumerates BLE+USB uniformly.
-        ILayerSource hidSource = OperatingSystem.IsMacOS()
+        // Per-OS impl: HidSharp's macOS backend doesn't see BLE-HoGP devices,
+        // and on Windows the HoGP driver strips ZMK's vendor-defined FF60/61
+        // collection so HidSharp can't see it over Bluetooth either. Each
+        // non-portable backend goes around the OS HID stack at the layer that
+        // works (IOKit on macOS, /dev/hidraw on Linux, WinRT GATT on Windows
+        // for BLE alongside HidSharp for USB).
+        ILayerSource hidSource;
+#if WINDOWS
+        hidSource = new WindowsHidCompositeLayerSource(_profile);
+#else
+        hidSource = OperatingSystem.IsMacOS()
             ? new MacRawHidLayerSource(_profile)
             : OperatingSystem.IsLinux()
                 ? new LinuxRawHidLayerSource(_profile)
                 : new RawHidLayerSource(_profile);
+#endif
 
         _layerCoordinator = new LayerSourceCoordinator(hidSource, hotkeyWrapper, _layerSourceMode);
         _layerCoordinator.ActiveLayerChanged += OnActiveLayerChanged;
