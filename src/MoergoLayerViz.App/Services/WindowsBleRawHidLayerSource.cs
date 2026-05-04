@@ -15,34 +15,31 @@ namespace MoergoLayerViz.App.Services;
 /// Raw-HID layer source for **Windows over Bluetooth LE** via direct WinRT
 /// GATT calls.
 ///
-/// <para><b>Currently dormant on Windows.</b> The HoGP kernel driver claims
-/// the standard HID GATT service (UUID 0x1812) exclusively and refuses even
-/// <see cref="GattSharingMode.SharedReadAndWrite"/> opens with
+/// <para>Talks to a custom vendor GATT service exposed by the
+/// <see href="https://github.com/ovandongen/zmk-raw-hid">ovandongen/zmk-raw-hid</see>
+/// firmware fork (or any firmware exposing the same UUIDs). The fork's
+/// transport mirrors the FF60/61 raw-HID reports under
+/// <c>MOERGORAWHID_SVC</c> in parallel with the standard BLE HID service —
+/// notifications come down <c>MOERGORAWHID_TXC</c>, host writes go up
+/// <c>MOERGORAWHID_RXC</c> (RX is unused by this read-only viewer).</para>
+///
+/// <para>Why a custom service: Windows' HoGP (HID-over-GATT) kernel driver
+/// claims the standard BLE HID service (UUID 0x1812) exclusively and refuses
+/// even <see cref="GattSharingMode.SharedReadAndWrite"/> opens with
 /// <c>AccessDenied</c>. Empirically verified on Windows 10.0.26100; matches
 /// reports in bleak #599 and the Nordic DevZone "HID Service access denied"
-/// thread. There is no user-mode escape hatch on Windows for 0x1812.</para>
+/// thread. There is no user-mode escape hatch on Windows for 0x1812. The
+/// firmware-side fix sidesteps HoGP entirely by registering the same raw-HID
+/// reports under a custom vendor UUID it cannot claim. macOS and Linux are
+/// unaffected and use the HidSharp / IOHIDManager / hidraw paths directly,
+/// regardless of which firmware variant is loaded.</para>
 ///
-/// <para>The fix has to come from the firmware: <c>zzeneg/zmk-raw-hid</c>
-/// currently registers its raw HID reports inside <c>BT_UUID_HIDS</c>
-/// (i.e. 0x1812). Exposing them in parallel under a custom vendor service
-/// UUID would side-step HoGP entirely, and this source would then need only
-/// a UUID-constant swap to come back to life.</para>
-///
-/// <para>For now the loop probes once: it enumerates a matching device, opens
-/// the HID service, and on the expected <c>AccessDenied</c> logs a single
-/// explanatory warning and exits permanently. USB Raw HID still works through
-/// <see cref="RawHidLayerSource"/>; SharpHook covers BLE in the meantime. The
-/// composite source (<see cref="WindowsHidCompositeLayerSource"/>) keeps both
-/// USB and this dormant BLE leg wired so that flipping the firmware UUID is a
-/// one-line change here.</para>
-///
-/// <para>Approach when active: enumerate paired BLE devices, find ones matching
-/// the active profile, open the HID GATT service, subscribe to notifications on
-/// every Notify-capable Report characteristic (UUID 0x2A4D), and dispatch every
-/// incoming payload through <see cref="RawHidProtocol"/>. The protocol parsers
-/// reject non-FF60 reports by content (first byte != 0xFF / 0xF1), so
-/// keyboard/consumer reports are filtered without us walking the Report Map to
-/// identify the right Report ID — a deliberate v1 simplification.</para>
+/// <para>Approach: enumerate paired BLE devices, find ones matching the
+/// active profile, open the custom service, subscribe to notifications on the
+/// TX characteristic, and dispatch every incoming payload through
+/// <see cref="RawHidProtocol"/>. The composite source
+/// (<see cref="WindowsHidCompositeLayerSource"/>) wires this leg in parallel
+/// with the USB raw-HID source; whichever is connected wins.</para>
 /// </summary>
 [SupportedOSPlatform("windows10.0.19041.0")]
 internal sealed class WindowsBleRawHidLayerSource : ILayerSource
@@ -51,6 +48,12 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
     // Core's ZmkHidIds (which is internal to Core, hence the duplication).
     private const int ZmkVendorId = 0x16C0;
     private const int ZmkProductId = 0x27DB;
+
+    // Vanity UUIDs — ASCII bytes of "MOERGORAWHID_SVC" and "_TXC". Firmware:
+    // ovandongen/zmk-raw-hid. The companion RX char (...5f525843, "_RXC") is
+    // host→keyboard and unused by this read-only viewer.
+    private static readonly Guid MoergoRawHidServiceUuid = new("4d4f4552-474f-5241-5748-49445f535643");
+    private static readonly Guid MoergoRawHidTxCharUuid = new("4d4f4552-474f-5241-5748-49445f545843");
 
     private const int RescanDelayMs = 3000;
 
@@ -130,33 +133,18 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
                 }
 
                 var sr = await device.GetGattServicesForUuidAsync(
-                    GattServiceUuids.HumanInterfaceDevice, BluetoothCacheMode.Uncached);
+                    MoergoRawHidServiceUuid, BluetoothCacheMode.Uncached);
                 if (sr.Status != GattCommunicationStatus.Success || sr.Services.Count == 0)
                 {
                     DiagnosticLog.Info("WinBleHid",
-                        $"Device '{device.Name}' has no HID GATT service (status={sr.Status}); skipping.");
+                        $"Device '{device.Name}' does not expose the Moergo raw-HID GATT service " +
+                        $"(status={sr.Status}); the firmware likely isn't the ovandongen/zmk-raw-hid fork. Skipping.");
                     await WaitForRescanOrTimeout(RescanDelayMs, ct);
                     continue;
                 }
                 hidService = sr.Services[0];
 
-                // HoGP holds 0x1812 exclusively; SharedReadAndWrite is the WinRT
-                // escape hatch for "another driver already owns this; let me
-                // read alongside" but Windows refuses it for the HID service.
-                // On AccessDenied we exit the loop permanently — retrying gives
-                // the same answer every time and just spams the log. Any other
-                // failure is treated as transient (rescan).
                 var openStatus = await hidService.OpenAsync(GattSharingMode.SharedReadAndWrite);
-                if (openStatus == GattOpenStatus.AccessDenied)
-                {
-                    DiagnosticLog.Warn("WinBleHid",
-                        "Windows HoGP kernel driver refuses user-mode access to the BLE HID service " +
-                        "(0x1812) — raw HID over BLE is unavailable on Windows. SharpHook fallback " +
-                        "covers BLE; USB raw HID still works. This source is going dormant for the " +
-                        "session. Tracking firmware-side fix: expose raw HID under a custom GATT " +
-                        "service UUID in parallel with 0x1812.");
-                    return;
-                }
                 if (openStatus != GattOpenStatus.Success && openStatus != GattOpenStatus.AlreadyOpened)
                 {
                     DiagnosticLog.Warn("WinBleHid", $"hidService.OpenAsync → {openStatus}; will retry.");
@@ -165,11 +153,11 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
                 }
 
                 var charsResult = await hidService.GetCharacteristicsForUuidAsync(
-                    GattCharacteristicUuids.Report, BluetoothCacheMode.Uncached);
+                    MoergoRawHidTxCharUuid, BluetoothCacheMode.Uncached);
                 if (charsResult.Status != GattCommunicationStatus.Success)
                 {
                     DiagnosticLog.Warn("WinBleHid",
-                        $"GetCharacteristics for Report failed: {charsResult.Status}");
+                        $"GetCharacteristics for Moergo raw-HID TX char failed: {charsResult.Status}");
                     await WaitForRescanOrTimeout(RescanDelayMs, ct);
                     continue;
                 }
@@ -181,8 +169,7 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
                         GattClientCharacteristicConfigurationDescriptorValue.Notify);
                     if (status != GattCommunicationStatus.Success)
                     {
-                        DiagnosticLog.Debug("WinBleHid",
-                            $"CCCD write failed on a Report characteristic: {status}");
+                        DiagnosticLog.Debug("WinBleHid", $"CCCD write failed on TX char: {status}");
                         continue;
                     }
                     ch.ValueChanged += OnReportNotification;
@@ -192,7 +179,8 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
                 if (subscribed.Count == 0)
                 {
                     DiagnosticLog.Warn("WinBleHid",
-                        $"Device '{device.Name}' exposes no Notify-capable Report characteristics; nothing to subscribe to.");
+                        $"Device '{device.Name}' exposes the Moergo raw-HID service but the TX characteristic " +
+                        $"isn't Notify-capable; nothing to subscribe to.");
                     await WaitForRescanOrTimeout(RescanDelayMs, ct);
                     continue;
                 }
@@ -201,7 +189,7 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
                     ? "Raw HID (BLE)"
                     : $"Raw HID ({device.Name}, BLE)";
                 DiagnosticLog.Info("WinBleHid",
-                    $"Connected: {_sourceName} — subscribed to {subscribed.Count} Report characteristic(s)");
+                    $"Connected: {_sourceName} — subscribed to Moergo raw-HID TX characteristic");
                 SetConnected(true);
 
                 // Block until disconnect or cancel. WinRT exposes
@@ -297,11 +285,9 @@ internal sealed class WindowsBleRawHidLayerSource : ILayerSource
             var bytes = new byte[buf.Length];
             reader.ReadBytes(bytes);
 
-            // Multiple Report characteristics (keyboard / consumer / vendor)
-            // are subscribed in parallel; RawHidProtocol's parsers reject
-            // anything that isn't the FF60 layer-state (0xFF) or key-event
-            // (0xF1) message by content, so we don't need a per-characteristic
-            // Report ID match here.
+            // The TX characteristic only carries FF60 reports; the protocol
+            // parsers' first-byte check (0xFF / 0xF1) is defensive against
+            // malformed payloads.
             var layer = RawHidProtocol.TryParseLayerState(bytes);
             if (layer is int l)
             {

@@ -8,13 +8,19 @@ namespace MoergoLayerViz.Tests;
 /// discovery to whichever keyboard the user has selected. Both Moergo
 /// boards register under the same VID/PID (0x16C0/0x27DB — the shared
 /// pid.codes ZMK identifier), so the matcher has to combine the IDs with
-/// a case-insensitive prefix match on the product name.
+/// a case-insensitive **substring** match on the product name.
+///
+/// <para>Substring (rather than prefix) is necessary because Linux's
+/// hidraw layer prepends the manufacturer name — the device shows up as
+/// <c>"MoErgo Go60 Left"</c> there, not <c>"Go60 Left"</c>. macOS and
+/// Windows expose the bare product string. A prefix match would silently
+/// stop finding the device on Linux.</para>
 ///
 /// <para>The test data covers both transports observed against real
 /// hardware: USB exposes "&lt;Board&gt; Left" because the cable side is the
 /// host; BLE exposes just "&lt;Board&gt;" because only the central is visible
 /// to the OS. A future firmware revision could add a "Wireless" or "RH"
-/// suffix; the prefix-only match keeps that working.</para>
+/// suffix; the substring match keeps that working.</para>
 /// </summary>
 public class KeyboardProfileHidMatcherTests
 {
@@ -22,10 +28,11 @@ public class KeyboardProfileHidMatcherTests
     private const int ZmkPid = 0x27DB;
 
     [Theory]
-    [InlineData("Go60 Left")]      // USB, observed
-    [InlineData("Go60")]           // BLE, observed
-    [InlineData("go60 right")]     // hypothetical RH-as-host USB; case-insensitive
-    [InlineData("Go60 Wireless")]  // future firmware suffix
+    [InlineData("Go60 Left")]         // USB / macOS, observed
+    [InlineData("Go60")]              // BLE, observed
+    [InlineData("MoErgo Go60 Left")]  // Linux hidraw, observed — manufacturer prefix
+    [InlineData("go60 right")]        // hypothetical RH-as-host USB; case-insensitive
+    [InlineData("Go60 Wireless")]     // future firmware suffix
     public void Go60_Matches_GoodProductNames(string product)
     {
         var p = new Go60Profile();
@@ -35,6 +42,7 @@ public class KeyboardProfileHidMatcherTests
     [Theory]
     [InlineData("Glove80 Left")]
     [InlineData("Glove80")]
+    [InlineData("MoErgo Glove80 Left")]  // Linux hidraw shape
     [InlineData("glove80 RH")]
     public void Glove80_Matches_GoodProductNames(string product)
     {
@@ -79,13 +87,4 @@ public class KeyboardProfileHidMatcherTests
         Assert.False(glove.MatchesHidDevice(ZmkVid, ZmkPid, null));
     }
 
-    [Fact]
-    public void DoesNotMatch_OnSubstringInTheMiddle()
-    {
-        // Prefix only — "MyGo60" must not match "Go60" even though it
-        // contains the substring. Avoids false positives if a clone or
-        // accessory happens to embed the name.
-        var p = new Go60Profile();
-        Assert.False(p.MatchesHidDevice(ZmkVid, ZmkPid, "MyGo60"));
-    }
 }
