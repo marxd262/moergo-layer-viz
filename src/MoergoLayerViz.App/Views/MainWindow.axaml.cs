@@ -1,3 +1,5 @@
+using System;
+using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
@@ -56,6 +58,38 @@ public partial class MainWindow : Window
             DiagnosticLog.Info("UI", "Transparency: applied near-transparent safety background (Windows + Transparent)");
             Background = new Avalonia.Media.SolidColorBrush(
                 Avalonia.Media.Color.FromArgb(1, 0, 0, 0));
+
+            // Kill the DWM-drawn border line that Windows renders around borderless
+            // windows; without this the transparent body has clearly defined edges.
+            // DWMWA_BORDER_COLOR=COLOR_NONE is Windows 11+; silently ignored on Win10.
+            TryDisableDwmBorder();
+        }
+    }
+
+    [DllImport("dwmapi.dll", PreserveSig = true)]
+    private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attr, ref uint value, int size);
+
+    private void TryDisableDwmBorder()
+    {
+        const int DWMWA_BORDER_COLOR = 34;
+        const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;
+
+        var hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
+        if (hwnd == IntPtr.Zero)
+        {
+            DiagnosticLog.Warn("UI", "DWM border: no HWND available, skipping");
+            return;
+        }
+
+        try
+        {
+            uint colorNone = DWMWA_COLOR_NONE;
+            int hr = DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref colorNone, sizeof(uint));
+            DiagnosticLog.Info("UI", $"DWM border: DwmSetWindowAttribute(BORDER_COLOR=NONE) hr=0x{hr:X8}");
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Warn("UI", $"DWM border: P/Invoke failed: {ex.Message}");
         }
     }
 
