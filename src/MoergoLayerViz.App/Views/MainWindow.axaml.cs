@@ -9,7 +9,7 @@ namespace MoergoLayerViz.App.Views;
 public partial class MainWindow : Window
 {
     private bool? _barsOnBottom;
-    private const double ResizeEdge = 6;
+    private static readonly double ResizeEdge = OperatingSystem.IsWindows() ? 9 : 6;
 
     public MainWindow()
     {
@@ -124,6 +124,30 @@ public partial class MainWindow : Window
 
         if (inBars)
             BeginMoveDrag(e);
+    }
+
+    /// <summary>
+    /// Updates the cursor as the pointer enters / leaves a resize zone so the
+    /// otherwise-invisible 6–9 px hot zones are discoverable. Suppressed when
+    /// the OS draws its own chrome (macOS, Windows transparency fallback).
+    /// </summary>
+    protected override void OnPointerMoved(PointerEventArgs e)
+    {
+        base.OnPointerMoved(e);
+
+        if (SystemDecorations == SystemDecorations.Full) return;
+
+        var edge = GetResizeEdge(e.GetPosition(this));
+        Cursor = edge switch
+        {
+            WindowEdge.North     or WindowEdge.South     => new Cursor(StandardCursorType.SizeNorthSouth),
+            WindowEdge.West      or WindowEdge.East      => new Cursor(StandardCursorType.SizeWestEast),
+            WindowEdge.NorthWest                         => new Cursor(StandardCursorType.TopLeftCorner),
+            WindowEdge.NorthEast                         => new Cursor(StandardCursorType.TopRightCorner),
+            WindowEdge.SouthWest                         => new Cursor(StandardCursorType.BottomLeftCorner),
+            WindowEdge.SouthEast                         => new Cursor(StandardCursorType.BottomRightCorner),
+            _                                            => Cursor.Default,
+        };
     }
 
     private WindowEdge? GetResizeEdge(Point pos)
