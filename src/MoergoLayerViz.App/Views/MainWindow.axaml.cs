@@ -71,7 +71,9 @@ public partial class MainWindow : Window
 
     private void TryDisableDwmBorder()
     {
+        const int DWMWA_NCRENDERING_POLICY = 2;
         const int DWMWA_BORDER_COLOR = 34;
+        const uint DWMNCRP_DISABLED = 1;
         const uint DWMWA_COLOR_NONE = 0xFFFFFFFE;
 
         var hwnd = TryGetPlatformHandle()?.Handle ?? IntPtr.Zero;
@@ -84,8 +86,14 @@ public partial class MainWindow : Window
         try
         {
             uint colorNone = DWMWA_COLOR_NONE;
-            int hr = DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref colorNone, sizeof(uint));
-            DiagnosticLog.Info("UI", $"DWM border: DwmSetWindowAttribute(BORDER_COLOR=NONE) hr=0x{hr:X8}");
+            int hrColor = DwmSetWindowAttribute(hwnd, DWMWA_BORDER_COLOR, ref colorNone, sizeof(uint));
+
+            // Disable DWM's non-client rendering — this is where the drop shadow is drawn.
+            uint ncDisabled = DWMNCRP_DISABLED;
+            int hrNc = DwmSetWindowAttribute(hwnd, DWMWA_NCRENDERING_POLICY, ref ncDisabled, sizeof(uint));
+
+            DiagnosticLog.Info("UI",
+                $"DWM border: BORDER_COLOR=NONE hr=0x{hrColor:X8}, NCRENDERING_POLICY=DISABLED hr=0x{hrNc:X8}");
         }
         catch (Exception ex)
         {
