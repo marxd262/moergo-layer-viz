@@ -34,7 +34,10 @@ public sealed class Go60Profile : IKeyboardProfile
     public bool MatchesHidDevice(int vendorId, int productId, string? productName) =>
         vendorId == ZmkHidIds.VendorId
         && productId == ZmkHidIds.ProductId
-        && productName is not null
+        && NameMatches(productName);
+
+    public bool NameMatches(string? productName) =>
+        productName is not null
         && productName.Contains("Go60", StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<KeyPosition> BuildKeys()

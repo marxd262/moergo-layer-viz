@@ -43,4 +43,12 @@ public interface IKeyboardProfile
     /// </para>
     /// </summary>
     bool MatchesHidDevice(int vendorId, int productId, string? productName);
+
+    /// <summary>
+    /// True when the product name alone identifies this keyboard family.
+    /// Used by transports that can't read VID/PID (notably Windows BLE GATT,
+    /// which exposes only the advertised device name). Same case-insensitive
+    /// substring match as the name portion of <see cref="MatchesHidDevice"/>.
+    /// </summary>
+    bool NameMatches(string? productName);
 }

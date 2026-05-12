@@ -12,6 +12,7 @@ using MoergoLayerViz.Core.Keymap;
 using MoergoLayerViz.Core.Layout;
 using MoergoLayerViz.Core.Models;
 using MoergoLayerViz.Core.Settings;
+using ZmkHidProtocol.Transport;
 
 namespace MoergoLayerViz.App.ViewModels;
 
@@ -1361,26 +1362,11 @@ public partial class MainWindowViewModel : ObservableObject
 
         // Raw HID is platform-agnostic and doesn't need accessibility perms,
         // so it spins up regardless of the SharpHook outcome above. The
-        // profile filter scopes discovery to the user's selected keyboard
-        // (both Moergo boards share VID:PID, so we'd otherwise latch onto
-        // whichever is enumerated first).
-        //
-        // Per-OS impl: HidSharp's macOS backend doesn't see BLE-HoGP devices,
-        // and on Windows the HoGP driver strips ZMK's vendor-defined FF60/61
-        // collection so HidSharp can't see it over Bluetooth either. Each
-        // non-portable backend goes around the OS HID stack at the layer that
-        // works (IOKit on macOS, /dev/hidraw on Linux, WinRT GATT on Windows
-        // for BLE alongside HidSharp for USB).
-        ILayerSource hidSource;
-#if WINDOWS
-        hidSource = new WindowsHidCompositeLayerSource(_profile);
-#else
-        hidSource = OperatingSystem.IsMacOS()
-            ? new MacRawHidLayerSource(_profile)
-            : OperatingSystem.IsLinux()
-                ? new LinuxRawHidLayerSource(_profile)
-                : new RawHidLayerSource(_profile);
-#endif
+        // matcher scopes discovery to the user's selected keyboard (both
+        // Moergo boards share VID:PID, so we'd otherwise latch onto whichever
+        // is enumerated first). Per-OS transport selection (IOKit / hidraw /
+        // HidSharp+WinRT GATT) lives inside ZmkHidProtocol's LayerSourceFactory.
+        var (hidSource, _) = LayerSourceFactory.Create(new KeyboardProfileMatcher(_profile));
 
         _layerCoordinator = new LayerSourceCoordinator(hidSource, hotkeyWrapper, _layerSourceMode);
         _layerCoordinator.ActiveLayerChanged += OnActiveLayerChanged;

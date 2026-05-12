@@ -235,6 +235,16 @@ Author the macros directly in Moergo's editor following one of the shapes above.
 - **.NET 10 SDK** (target framework `net10.0`).
 - macOS 11+ for the macOS bundle, Windows 10+ for the Windows build, any current Linux distro for the Linux build (no daemon, just `/dev/hidraw` access via the udev rule above).
 
+### Clone
+
+The Raw HID transport lives in the [zmk-hid-protocol](https://github.com/ovandongen/zmk-hid-protocol) submodule under `external/`, so clone recursively:
+
+```bash
+git clone --recurse-submodules https://github.com/ovandongen/moergo-layer-viz.git
+```
+
+If you already cloned without `--recurse-submodules`, run `git submodule update --init --recursive` from the repo root.
+
 ### Common commands
 
 ```bash

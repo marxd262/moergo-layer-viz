@@ -9,14 +9,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="MoergoLayerViz.Tests" />
-    <!-- WindowsBleRawHidLayerSource (App, Windows-only) parses raw HID reports
-         via Core's internal RawHidProtocol. Mac/USB sources live inside Core
-         so they don't need this; only the WinRT BLE source crosses assemblies. -->
-    <InternalsVisibleTo Include="MoergoLayerViz.App" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="HidSharp" Version="2.6.4" />
+    <ProjectReference Include="..\..\external\zmk-hid-protocol\src\ZmkHidProtocol\ZmkHidProtocol.csproj" />
   </ItemGroup>
 
 </Project>

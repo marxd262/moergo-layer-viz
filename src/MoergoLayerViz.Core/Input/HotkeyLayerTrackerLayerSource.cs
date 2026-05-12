@@ -1,3 +1,5 @@
+using ZmkHidProtocol.Transport;
+
 namespace MoergoLayerViz.Core.Input;
 
 /// <summary>
@@ -23,6 +25,10 @@ public sealed class HotkeyLayerTrackerLayerSource : ILayerSource
     /// <summary>Always null — SharpHook reports keycodes, not matrix positions.</summary>
     public event Action<int, bool>? KeyPositionEvent { add { } remove { } }
 
+#pragma warning disable CS0067 // Synthetic source never reads raw HID reports.
+    public event Action<ReadOnlyMemory<byte>>? ReportReceived;
+#pragma warning restore CS0067
+
     public event Action? ConnectionChanged;
 
     public bool IsConnected => _started;
@@ -30,6 +36,9 @@ public sealed class HotkeyLayerTrackerLayerSource : ILayerSource
     public string SourceName => "SharpHook";
 
     public int CurrentLayer => _tracker.CurrentLayer;
+
+    // SharpHook is keyboard-agnostic; the device matcher is irrelevant here.
+    public void SetMatcher(IDeviceMatcher? matcher) { }
 
     public void Start()
     {

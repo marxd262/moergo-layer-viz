@@ -1,6 +1,7 @@
 using MoergoLayerViz.Core.Diagnostics;
 using MoergoLayerViz.Core.Input;
 using MoergoLayerViz.Core.Layout;
+using ZmkHidProtocol.Transport;
 
 namespace MoergoLayerViz.App.Services;
 
@@ -90,15 +91,7 @@ public sealed class LayerSourceCoordinator : IDisposable
     /// </summary>
     public void SetActiveProfile(IKeyboardProfile? profile)
     {
-        switch (_hid)
-        {
-#if WINDOWS
-            case WindowsHidCompositeLayerSource composite: composite.SetProfile(profile); break;
-#endif
-            case RawHidLayerSource win: win.SetProfile(profile); break;
-            case MacRawHidLayerSource mac: mac.SetProfile(profile); break;
-            case LinuxRawHidLayerSource linux: linux.SetProfile(profile); break;
-        }
+        _hid?.SetMatcher(profile is null ? null : new KeyboardProfileMatcher(profile));
     }
 
     /// <summary>Switch the user-selected mode (Auto / RawHid / SharpHook). Idempotent.</summary>
