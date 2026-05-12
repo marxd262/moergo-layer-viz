@@ -54,9 +54,8 @@ nunit-*.xml
 # Publish output
 publish/
 
-# Claude Code local settings (auto-mutated with per-session permissions)
-.claude/settings.local.json
-.claude/settings.json
+# Claude Code local state (settings, scheduled-task locks, etc.)
+.claude/
 
 # Project planning notes (kept local, not published)
 docs/plan.md
