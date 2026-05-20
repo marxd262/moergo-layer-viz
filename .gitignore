@@ -42,6 +42,9 @@ CodeCoverage/
 # MSBuild Binary and Structured Log
 *.binlog
 
+# IDE language-service cache
+*.lscache
+
 # MSTest test Results
 [Tt]est[Rr]esult*/
 [Bb]uild[Ll]og.*
@@ -60,4 +63,7 @@ publish/
 # Project planning notes (kept local, not published)
 docs/plan.md
 docs/hidplan.md
+docs/hid-only-refactor-plan.md
+docs/dtsi-physical-layout-plan.md
+docs/v2.0-release-notes.md
 CLAUDE.md

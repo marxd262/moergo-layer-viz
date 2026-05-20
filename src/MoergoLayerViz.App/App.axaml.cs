@@ -2,12 +2,15 @@ using System.IO;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Input;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Microsoft.Extensions.DependencyInjection;
 using MoergoLayerViz.App.Localization;
 using MoergoLayerViz.App.Services;
+using MoergoLayerViz.App.Services.Hotkeys;
 using MoergoLayerViz.App.ViewModels;
 using MoergoLayerViz.App.Views;
 using MoergoLayerViz.Core.Diagnostics;
@@ -19,7 +22,7 @@ namespace MoergoLayerViz.App;
 
 public partial class App : Application
 {
-    private GlobalHotkeyService? _hotkeyService;
+    private IGlobalHotkeyService? _hotkeyService;
 
     public override void Initialize()
     {
@@ -47,7 +50,14 @@ public partial class App : Application
                 e.Handled = true;
             };
 
-            var settingsService = new SettingsService();
+            // Composition root. AppServices owns construction of every
+            // service that the container can manage; per-service Exit
+            // disposal handlers are gone — the provider disposes its
+            // IDisposable singletons on the single Exit hook below.
+            var services = AppServices.BuildProvider();
+            desktop.Exit += (_, _) => services.Dispose();
+
+            var settingsService = services.GetRequiredService<ISettingsService>();
             var initialSettings = settingsService.Load();
             Loc.Instance.SetCulture(initialSettings.Language);
 
@@ -57,18 +67,8 @@ public partial class App : Application
             else if (Enum.TryParse<LogLevel>(initialSettings.LogLevel, true, out var logLevel))
                 DiagnosticLog.SetMinimumLevel(logLevel);
 
-            // Shared global-hook owner — libuiohook is a process-global
-            // singleton, so both GlobalHotkeyService and the live key-event
-            // source have to drive the same underlying hook.
-            SharpHookProvider? hookProvider = null;
-            if (!OperatingSystem.IsLinux())
-            {
-                hookProvider = new SharpHookProvider();
-                desktop.Exit += (_, _) => hookProvider.Dispose();
-            }
-
             DiagnosticLog.Info("Startup", "Creating MainWindowViewModel...");
-            var viewModel = new MainWindowViewModel(settingsService, hookProvider);
+            var viewModel = services.GetRequiredService<MainWindowViewModel>();
             var mainWindow = new MainWindow { DataContext = viewModel };
             desktop.MainWindow = mainWindow;
 
@@ -134,8 +134,30 @@ public partial class App : Application
             if (trayIcons?.Count > 0)
             {
                 var trayIcon = trayIcons[0];
-                trayIcon.Icon = new WindowIcon(
-                    AssetLoader.Open(new Uri("avares://MoergoLayerViz.App/Assets/icon.png")));
+                var trayTinter = new TrayIconTinter();
+
+                void ApplyTrayIcon()
+                {
+                    var icon = viewModel.ColorTrayIconByActiveLayer
+                        ? trayTinter.GetTinted(viewModel.ActiveLayerTintColor)
+                        : trayTinter.GetOriginal();
+                    trayIcon.Icon = icon;
+                    // Mirror onto the main window so the Windows taskbar entry
+                    // tracks too. macOS Dock ignores Window.Icon (bundle-bound).
+                    mainWindow.Icon = icon;
+                }
+
+                ApplyTrayIcon();
+                viewModel.PropertyChanged += (_, e) =>
+                {
+                    if (e.PropertyName is nameof(MainWindowViewModel.ActiveLayerTintColor)
+                        or nameof(MainWindowViewModel.ColorTrayIconByActiveLayer)
+                        or nameof(MainWindowViewModel.SelectedKeyboard))
+                    {
+                        Dispatcher.UIThread.Post(ApplyTrayIcon);
+                    }
+                };
+
                 LocalizeTrayMenu(trayIcon);
                 // Named delegate so we can detach on Exit. Without the -=, every
                 // runtime culture switch leaks the prior handler's tray-icon
@@ -187,15 +209,6 @@ public partial class App : Application
                     viewModel.LoadLayoutFromPath(file[0].Path.LocalPath);
             };
 
-            viewModel.ShowAccessibilityPromptRequested = () =>
-            {
-                var dialog = new Views.AccessibilityPromptWindow();
-                if (mainWindow.IsVisible)
-                    dialog.ShowDialog(mainWindow);
-                else
-                    dialog.Show();
-            };
-
             // Single non-modal Settings window. Re-clicking the toolbar button
             // brings the existing window to front rather than spawning a new one.
             SettingsWindow? settingsWindow = null;
@@ -206,7 +219,7 @@ public partial class App : Application
                     existing.Activate();
                     return;
                 }
-                var settingsVm = new SettingsViewModel(settingsService, viewModel);
+                var settingsVm = services.GetRequiredService<SettingsViewModel>();
                 settingsWindow = new SettingsWindow
                 {
                     DataContext = settingsVm,
@@ -230,62 +243,20 @@ public partial class App : Application
                 settingsWindow.Show(mainWindow);
             };
 
-            // Single non-modal Generate-signals window. Re-clicking the toolbar
-            // button brings the existing window to front rather than spawning
-            // a new one, mirroring the Settings pattern.
-            GenerateSignalsWindow? generateWindow = null;
-            viewModel.OpenGenerateSignalsRequested = () =>
-            {
-                if (generateWindow is { } existing && existing.IsVisible)
-                {
-                    existing.Activate();
-                    return;
-                }
-                var loadedPath = viewModel.LoadedLayoutPath;
-                var generateVm = new GenerateSignalsViewModel(loadedPath);
-                generateVm.SaveFileRequested = async defaultName =>
-                {
-                    Avalonia.Platform.Storage.IStorageFolder? startFolder = null;
-                    var sourceDir = string.IsNullOrEmpty(loadedPath) ? null : Path.GetDirectoryName(loadedPath);
-                    if (!string.IsNullOrEmpty(sourceDir))
-                    {
-                        try { startFolder = await mainWindow.StorageProvider.TryGetFolderFromPathAsync(sourceDir); }
-                        catch { /* fallback to no start location */ }
-                    }
-                    var file = await mainWindow.StorageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-                    {
-                        Title = Loc.Instance["GenerateSaveDialog_Title"],
-                        SuggestedFileName = defaultName,
-                        SuggestedStartLocation = startFolder,
-                        DefaultExtension = "json",
-                        FileTypeChoices =
-                        [
-                            new FilePickerFileType(Loc.Instance["LoadDialog_FileType"])
-                            {
-                                Patterns = ["*.json"],
-                            }
-                        ],
-                    });
-                    return file?.Path.LocalPath;
-                };
-                generateWindow = new GenerateSignalsWindow
-                {
-                    DataContext = generateVm,
-                    Topmost = mainWindow.Topmost,
-                };
-                generateWindow.Closed += (_, _) => generateWindow = null;
-                generateWindow.Show(mainWindow);
-            };
-
             viewModel.CopyDiagnosticsRequested = async () =>
             {
                 try
                 {
                     var report = DiagnosticLog.CollectDiagnosticReport(viewModel.BuildDiagnosticsSnapshot());
-                    var clipboard = mainWindow.Clipboard;
+                    var clipboard = TopLevel.GetTopLevel(mainWindow)?.Clipboard ?? mainWindow.Clipboard;
                     if (clipboard is not null)
                     {
-                        await clipboard.SetTextAsync(report);
+                        // SetTextAsync silently no-ops on Avalonia 11.3 macOS
+                        // when invoked from a borderless transparent window.
+                        // The newer SetDataAsync + DataTransfer path writes reliably.
+                        var transfer = new DataTransfer();
+                        transfer.Add(DataTransferItem.Create(DataFormat.Text, report));
+                        await clipboard.SetDataAsync(transfer);
                         viewModel.StatusMessage = Loc.Instance["Status_DiagnosticsCopied"];
                     }
                 }
@@ -295,37 +266,15 @@ public partial class App : Application
                 }
             };
 
-            // Global show/hide hotkey — Linux/Wayland blocks global hooks from unfocused windows.
-            if (!OperatingSystem.IsLinux() && hookProvider is not null)
-            {
-                _hotkeyService = new GlobalHotkeyService(hookProvider);
-                try
-                {
-                    _hotkeyService.Key = GlobalHotkeyService.ParseKey(initialSettings.HotkeyKey);
-                    _hotkeyService.Modifiers = GlobalHotkeyService.ParseModifiers(initialSettings.HotkeyModifiers);
-                }
-                catch
-                {
-                    // Invalid saved hotkey — use defaults
-                }
-                _hotkeyService.HotkeyPressed = () =>
-                    Dispatcher.UIThread.Post(() => viewModel.ToggleWindowRequested?.Invoke());
-                _hotkeyService.Start();
-                viewModel.HotkeyKeyChanged += newKey =>
-                {
-                    try
-                    {
-                        _hotkeyService.UpdateHotkey(
-                            GlobalHotkeyService.ParseKey(newKey),
-                            GlobalHotkeyService.ParseModifiers(viewModel.HotkeyModifiers));
-                    }
-                    catch (Exception ex)
-                    {
-                        DiagnosticLog.Warn("Hotkey", $"Failed to apply new hotkey '{newKey}': {ex.Message}");
-                    }
-                };
-                desktop.Exit += (_, _) => _hotkeyService.Dispose();
-            }
+            // Global show/hide hotkey. The registry's Linux stub returns
+            // failure on TryRegister, so the service no-ops on Linux without
+            // a special case here.
+            _hotkeyService = services.GetRequiredService<IGlobalHotkeyService>();
+            _hotkeyService.HotkeyPressed = () => viewModel.ToggleWindowRequested?.Invoke();
+            _hotkeyService.UpdateHotkey(initialSettings.HotkeyKey, initialSettings.HotkeyModifiers);
+            _hotkeyService.Start();
+            viewModel.HotkeyKeyChanged += newKey =>
+                _hotkeyService.UpdateHotkey(newKey, viewModel.HotkeyModifiers);
 
             // Restore the last-loaded layout (or show a "pick a file" prompt).
             Dispatcher.UIThread.Post(() => viewModel.InitializeAsync(), DispatcherPriority.Background);

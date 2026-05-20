@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using Avalonia;
 using MoergoLayerViz.Core.Diagnostics;
 using MoergoLayerViz.Core.Settings;
@@ -13,6 +14,11 @@ class Program
         if (!isNew) return;
 
         DiagnosticLog.LogEnvironment();
+        // ZmkHidProtocol's LibLog routes through System.Diagnostics.Trace.
+        // Without a listener, every RawHid log line vanishes — install a
+        // bridge that forwards them into DiagnosticLog so HID discovery /
+        // connect / read activity is visible in diagnostic.log.
+        Trace.Listeners.Add(new ZmkHidProtocolTraceListener());
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 
@@ -37,6 +43,8 @@ class Program
                 }
                 catch
                 {
+                    // Earliest-startup settings read; can't recover and a crash
+                    // here would block launch, so fall back to auto-detect.
                     renderMode = "auto";
                     source = "default (settings read failed)";
                 }
