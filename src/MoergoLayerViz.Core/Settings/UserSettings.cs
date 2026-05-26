@@ -187,4 +187,20 @@ public record UserSettings
     /// the configured target.
     /// </summary>
     public Dictionary<string, MouseLayerSettings> MouseLayer { get; init; } = new();
+
+    /// <summary>
+    /// When true, on-key numbered badges and the combo legend below the board
+    /// are shown; when false, the corner-triangle earmark renders on
+    /// participating keys (the original visualization). Persisted so the user's
+    /// preference survives across launches.
+    /// </summary>
+    public bool IsComboOverlayVisible { get; init; } = true;
+
+    /// <summary>
+    /// Per-combo user-authored label overrides. Outer key = profile id ("GO60",
+    /// "Glove80"). Inner key = the combo's sorted, comma-joined key positions
+    /// (see <see cref="MoergoLayerViz.Core.Models.MoergoCombo.KeyPositionsKey"/>).
+    /// Empty / missing entries fall back to the formatter-derived default label.
+    /// </summary>
+    public Dictionary<string, Dictionary<string, ComboLabelOverride>> ComboLabelOverrides { get; init; } = new();
 }

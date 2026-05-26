@@ -26,17 +26,22 @@ public class CombosRenderingTests
         Assert.Equal(4, config.Combos.Count);
         var f12 = Assert.Single(config.Combos, c => c.Name == "F12");
         Assert.Equal(new[] { 1, 2 }, f12.KeyPositions);
-        Assert.Equal(new[] { -1 }, f12.Layers);
         Assert.Equal("&kp", f12.Binding.Behavior);
         Assert.Equal(new[] { "F12" }, f12.Binding.Params);
+
+        // 1-based source-order numbering and sorted-comma key-positions key.
+        var numbers = config.Combos.Select(c => c.Number).ToArray();
+        Assert.Equal(new[] { 1, 2, 3, 4 }, numbers);
+        Assert.Equal("1,2", f12.KeyPositionsKey);
     }
 
     [Fact]
-    public void AllLayersCombo_FlagsParticipatingKeysOnEveryLayer()
+    public void Combo_FlagsParticipatingKeysOnEveryLayer()
     {
         var vm = LoadGo60();
 
-        // F12 combo is on key positions 1 + 2, layers = [-1] (all layers).
+        // Combos are config-scoped (not layer-scoped) — the F12 combo on key
+        // positions 1 + 2 stays flagged across every layer switch.
         for (int layer = 0; layer < vm.Layers.Count; layer++)
         {
             vm.Layers[layer].SelectCommand.Execute(null);
@@ -58,39 +63,107 @@ public class CombosRenderingTests
     }
 
     [Fact]
-    public void LayerScopedCombo_OnlyFlagsKeysOnDeclaredLayers()
+    public void CombosAreConfigScoped_NotLayerScoped()
     {
-        // Two-layer config; combo on layer 1 only.
+        // The JSON `layers: [1]` field on a combo is intentionally ignored —
+        // Moergo combos apply to the whole keyboard config. The combo here is
+        // visible on every layer, and badges/IsInCombo don't react to the
+        // layer switch.
+        var vm = LoadGo60();
+
+        Assert.True(vm.Keys[1].IsInCombo);
+        var badgeNumbers = vm.Keys[1].ComboBadges.Select(b => b.Number).ToArray();
+
+        vm.Layers[1].SelectCommand.Execute(null);
+        Assert.True(vm.Keys[1].IsInCombo);
+        Assert.Equal(badgeNumbers, vm.Keys[1].ComboBadges.Select(b => b.Number).ToArray());
+    }
+
+    [Fact]
+    public void OnKeyBadges_CapAtMaxPerKey()
+    {
+        // Five combos all sharing key 0 — only the first MaxBadgesPerKey
+        // should render as pills; the rest still appear in the tooltip.
         const string json = """
         {
           "keyboard": "go60",
-          "layer_names": ["Base", "Symbol"],
-          "layers": [
-            [
-              { "value": "&kp", "params": [{ "value": "Q" }] },
-              { "value": "&kp", "params": [{ "value": "W" }] }
-            ],
-            [
-              { "value": "&kp", "params": [{ "value": "Q" }] },
-              { "value": "&kp", "params": [{ "value": "W" }] }
-            ]
-          ],
+          "layer_names": ["Base"],
+          "layers": [[
+            { "value": "&kp", "params": [{ "value": "A" }] },
+            { "value": "&kp", "params": [{ "value": "B" }] }
+          ]],
           "combos": [
-            {
-              "name": "Esc",
-              "binding": { "value": "&kp", "params": [{ "value": "ESC" }] },
-              "keyPositions": [0, 1],
-              "layers": [1]
-            }
+            { "name": "C1", "binding": { "value": "&kp", "params": [{ "value": "F1" }] }, "keyPositions": [0, 1] },
+            { "name": "C2", "binding": { "value": "&kp", "params": [{ "value": "F2" }] }, "keyPositions": [0, 1] },
+            { "name": "C3", "binding": { "value": "&kp", "params": [{ "value": "F3" }] }, "keyPositions": [0, 1] },
+            { "name": "C4", "binding": { "value": "&kp", "params": [{ "value": "F4" }] }, "keyPositions": [0, 1] },
+            { "name": "C5", "binding": { "value": "&kp", "params": [{ "value": "F5" }] }, "keyPositions": [0, 1] }
           ]
         }
         """;
-        var config = MoergoJsonLoader.LoadFromJson(json);
+        var path = Path.Combine(Path.GetTempPath(), $"badge-cap-{System.Guid.NewGuid():N}.json");
+        File.WriteAllText(path, json);
+        try
+        {
+            var settings = new InMemorySettingsService { Current = new UserSettings { Keyboard = "GO60" } };
+            var vm = new MainWindowViewModel(settings);
+            vm.LoadLayoutFromPath(path);
+            Assert.Equal(KeyComboBadgeViewModel.MaxBadgesPerKey, vm.Keys[0].ComboBadges.Count);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
 
-        var combo = Assert.Single(config.Combos);
-        Assert.False(combo.AppliesToLayer(0));
-        Assert.True(combo.AppliesToLayer(1));
-        Assert.False(combo.AppliesToAllLayers);
+    [Fact]
+    public void ComboOverride_PicksLabelFromSettings()
+    {
+        var settings = new InMemorySettingsService
+        {
+            Current = new UserSettings
+            {
+                Keyboard = "GO60",
+                ComboLabelOverrides = new()
+                {
+                    ["GO60"] = new() { ["1,2"] = new ComboLabelOverride { MainLabel = "MyF12" } },
+                },
+            },
+        };
+        var vm = new MainWindowViewModel(settings);
+        vm.LoadLayoutFromPath(Path.Combine(AppContext.BaseDirectory, "Go60.json"));
+
+        var combo = vm.ComboOverlay.Combos.Single(c => c.KeyPositionsKey == "1,2");
+        Assert.Equal("MyF12", combo.Label);
+        // DefaultLabel remains the formatter-derived one regardless of override.
+        Assert.NotEqual("MyF12", combo.DefaultLabel);
+    }
+
+    [Fact]
+    public void ComboOverride_FallsThroughToDefaultWhenAbsent()
+    {
+        var vm = LoadGo60();
+        var combo = vm.ComboOverlay.Combos.Single(c => c.KeyPositionsKey == "1,2");
+        Assert.Equal(combo.DefaultLabel, combo.Label);
+    }
+
+    [Fact]
+    public void SetHighlightedCombos_PropagatesAcrossLegendAndBadges()
+    {
+        var vm = LoadGo60();
+        var first = vm.ComboOverlay.Combos.First();
+        var participantKey = vm.Keys[first.KeyIndices[0]];
+
+        vm.ComboOverlay.SetHighlightedCombos(new[] { first.Number });
+        Assert.True(first.IsHighlighted);
+        Assert.True(participantKey.IsComboKeyHighlighted);
+        Assert.True(participantKey.IsAnyHighlight);
+        Assert.True(participantKey.ComboBadges.Single(b => b.Number == first.Number).IsHighlighted);
+
+        vm.ComboOverlay.SetHighlightedCombos(System.Array.Empty<int>());
+        Assert.False(first.IsHighlighted);
+        Assert.False(participantKey.IsComboKeyHighlighted);
+        Assert.False(participantKey.IsAnyHighlight);
     }
 
     [Fact]

@@ -42,11 +42,16 @@ public class SettingsViewModelMainPropertyCoverageTests
         "IsStackedLayout",
         "StackedTopHand",
         "IsWindowsModifierStyle",
+        "IsComboOverlayVisible",
         "ColorTrayIconByActiveLayer",
         "IsLiveHighlightingEnabled",
         "IsAutoLayerSwitchEnabled",
         "IsAutoSwitchKeyboardLayerEnabled",
         "IsAlwaysOnTop",
+
+        // Combo overlay coordinator — bound directly via DataContext.ComboOverlay
+        // in MainWindow.axaml; no SettingsVM mirror needed.
+        "ComboOverlay",
 
         // Pure derived / geometry / display-only — not user-facing in settings.
         "LoadInfoTooltip",

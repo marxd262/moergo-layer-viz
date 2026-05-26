@@ -59,8 +59,9 @@
     <Grid RowDefinitions="Auto,*,Auto">
 
         <!-- Bars panel: Row 0 (top) or Row 2 (bottom), switched automatically.
-             Inner Grid swaps StatusBar/LayerTabs so the status bar is always at the outer edge. -->
-        <Grid x:Name="BarsPanel" Grid.Row="0" RowDefinitions="Auto,Auto">
+             Inner Grid swaps StatusBar/LayerTabs/ComboLegend so the status bar
+             is always at the outer edge and the legend stays adjacent to the board. -->
+        <Grid x:Name="BarsPanel" Grid.Row="0" RowDefinitions="Auto,Auto,Auto">
 
             <!-- Status bar (solid, also serves as drag handle) -->
             <Border x:Name="StatusBar" Grid.Row="0" Background="{StaticResource BgBase}" Padding="12,8"
@@ -181,6 +182,18 @@
                         </Button>
 
 
+                        <!-- Combo overlay toggle — swaps the corner-triangle earmark for numbered
+                             badges + reveals the legend region below. -->
+                        <Button x:Name="ComboOverlayButton"
+                                Command="{Binding ToggleComboOverlayCommand}"
+                                Classes="toggle"
+                                Classes.active="{Binding IsComboOverlayVisible}"
+                                Padding="8,4"
+                                ToolTip.Tip="{Binding [Tooltip_ComboOverlay], Source={StaticResource Loc}}">
+                            <PathIcon Width="14" Height="14"
+                                      Data="M7 4a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm10 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM7 14a3 3 0 1 0 0 6 3 3 0 0 0 0-6zm10 0a3 3 0 1 0 0 6 3 3 0 0 0 0-6z" />
+                        </Button>
+
                         <!-- Stacked / horizontal layout toggle -->
                         <Button x:Name="StackedLayoutButton"
                                 Command="{Binding ToggleStackedLayoutCommand}"
@@ -284,6 +297,101 @@
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
                 </ItemsControl>
+            </Border>
+
+            <!-- Combo legend: numbered tiles for every combo defined by the loaded
+                 config. Combos are config-scoped, so this collection is identical
+                 across layer switches. Tile hover and on-key badge hover both
+                 drive SetHighlightedCombos via code-behind; clicking a tile opens
+                 the label-override flyout. -->
+            <Border x:Name="ComboLegend" Grid.Row="2"
+                    IsVisible="{Binding IsComboOverlayVisible}"
+                    Background="{Binding TabBackground, Converter={StaticResource HexToBrush}}"
+                    Padding="8,4">
+                <ScrollViewer HorizontalScrollBarVisibility="Disabled"
+                              VerticalScrollBarVisibility="Auto"
+                              MaxHeight="120">
+                    <ItemsControl ItemsSource="{Binding ComboOverlay.Combos}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.Styles>
+                            <Style Selector="Button.comboTile">
+                                <Setter Property="Background" Value="Transparent" />
+                                <Setter Property="BorderBrush" Value="{StaticResource ComboFill}" />
+                                <Setter Property="BorderThickness" Value="1" />
+                                <Setter Property="CornerRadius" Value="6" />
+                                <Setter Property="Padding" Value="6,3" />
+                                <Setter Property="Margin" Value="2" />
+                                <Setter Property="Focusable" Value="False" />
+                            </Style>
+                            <Style Selector="Button.comboTile:pointerover /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{StaticResource ComboFill}" />
+                            </Style>
+                            <Style Selector="Button.comboTile.active /template/ ContentPresenter">
+                                <Setter Property="Background" Value="{StaticResource ComboStroke}" />
+                            </Style>
+                            <Style Selector="Button.comboTile Border.numberPill">
+                                <Setter Property="Background" Value="{StaticResource ComboStroke}" />
+                                <Setter Property="CornerRadius" Value="9" />
+                                <Setter Property="MinWidth" Value="20" />
+                                <Setter Property="Height" Value="18" />
+                                <Setter Property="Padding" Value="4,0" />
+                                <Setter Property="VerticalAlignment" Value="Center" />
+                            </Style>
+                        </ItemsControl.Styles>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:ComboViewModel">
+                                <Button Classes="comboTile"
+                                        Classes.active="{Binding IsHighlighted}"
+                                        Click="OnComboTileClick"
+                                        PointerEntered="OnComboTilePointerEntered"
+                                        PointerExited="OnComboTilePointerExited"
+                                        ToolTip.Tip="{Binding ParticipatingKeysText}">
+                                    <Button.ContextFlyout>
+                                        <Flyout Placement="Top">
+                                            <StackPanel Spacing="6" Width="240">
+                                                <TextBlock Text="{Binding [Combo_EditLabelTitle], Source={StaticResource Loc}}"
+                                                           FontWeight="Bold" />
+                                                <TextBlock Text="{Binding ParticipatingKeysText}"
+                                                           Foreground="{StaticResource TextStatusBar}"
+                                                           FontSize="11" />
+                                                <TextBox Text="{Binding EditingLabel, Mode=TwoWay}"
+                                                         Watermark="{Binding DefaultLabel}" />
+                                                <StackPanel Orientation="Horizontal"
+                                                            Spacing="6"
+                                                            HorizontalAlignment="Right">
+                                                    <Button Content="{Binding [Combo_LabelClear], Source={StaticResource Loc}}"
+                                                            Command="{Binding DataContext.ComboOverlay.ClearLabelCommand, ElementName=MainWin}"
+                                                            CommandParameter="{Binding}" />
+                                                    <Button Content="{Binding [Combo_LabelSave], Source={StaticResource Loc}}"
+                                                            Command="{Binding DataContext.ComboOverlay.SaveLabelCommand, ElementName=MainWin}"
+                                                            CommandParameter="{Binding}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Flyout>
+                                    </Button.ContextFlyout>
+                                    <StackPanel Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                                        <Border Classes="numberPill">
+                                            <TextBlock Text="{Binding Number}"
+                                                       Foreground="White"
+                                                       FontSize="11"
+                                                       FontWeight="Bold"
+                                                       HorizontalAlignment="Center"
+                                                       VerticalAlignment="Center" />
+                                        </Border>
+                                        <TextBlock Text="{Binding Label}"
+                                                   Foreground="{StaticResource Text}"
+                                                   FontWeight="SemiBold"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
             </Border>
         </Grid>
 

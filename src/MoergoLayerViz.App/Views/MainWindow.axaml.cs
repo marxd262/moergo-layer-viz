@@ -3,8 +3,10 @@ using System.Runtime.InteropServices;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using MoergoLayerViz.App.Services;
+using MoergoLayerViz.App.ViewModels;
 using MoergoLayerViz.Core.Diagnostics;
 
 namespace MoergoLayerViz.App.Views;
@@ -111,19 +113,22 @@ public partial class MainWindow : Window
         // Move the whole bars panel to top or bottom of the outer grid
         Grid.SetRow(BarsPanel, shouldBeBottom ? 2 : 0);
 
-        // Swap inner order: status bar always at the outer edge
+        // Swap inner order: status bar always at the outer edge, combo legend
+        // always at the inner edge (touching the board), layer tabs sandwiched.
         if (shouldBeBottom)
         {
-            // Bottom: tabs first (row 0), status bar at very bottom (row 1)
-            Grid.SetRow(LayerTabs, 0);
-            Grid.SetRow(StatusBar, 1);
+            // Bottom: legend (row 0, touches board above), tabs (row 1), status (row 2).
+            Grid.SetRow(ComboLegend, 0);
+            Grid.SetRow(LayerTabs, 1);
+            Grid.SetRow(StatusBar, 2);
             StatusBar.CornerRadius = new CornerRadius(0, 0, 8, 8);
         }
         else
         {
-            // Top: status bar at very top (row 0), tabs below (row 1)
+            // Top: status (row 0), tabs (row 1), legend (row 2, touches board below).
             Grid.SetRow(StatusBar, 0);
             Grid.SetRow(LayerTabs, 1);
+            Grid.SetRow(ComboLegend, 2);
             StatusBar.CornerRadius = new CornerRadius(8, 8, 0, 0);
         }
     }
@@ -183,6 +188,40 @@ public partial class MainWindow : Window
             WindowEdge.SouthEast                         => new Cursor(StandardCursorType.BottomRightCorner),
             _                                            => Cursor.Default,
         };
+    }
+
+    /// <summary>
+    /// Hover on a combo tile in the legend → highlight the matching combo
+    /// across the legend tile, every participating-key pill, and each
+    /// participating key's press dot. Inert if the data context isn't the
+    /// main VM (defensive — there's no other VM that owns this view).
+    /// </summary>
+    private void OnComboTilePointerEntered(object? sender, PointerEventArgs e)
+    {
+        if (sender is not Control c) return;
+        if (c.DataContext is not ComboViewModel combo) return;
+        if (DataContext is not MainWindowViewModel vm) return;
+        vm.ComboOverlay.HoverCombo(combo.Number);
+    }
+
+    private void OnComboTilePointerExited(object? sender, PointerEventArgs e)
+    {
+        if (DataContext is not MainWindowViewModel vm) return;
+        vm.ComboOverlay.HoverCombo(null);
+    }
+
+    /// <summary>
+    /// Left-click on a legend tile toggles a sticky selection — the highlight
+    /// persists past pointer-exit so the user can study the participating keys
+    /// without keeping the mouse pinned on the tile. Right-click opens the
+    /// label-override flyout (wired via <c>Button.ContextFlyout</c>).
+    /// </summary>
+    private void OnComboTileClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Control c) return;
+        if (c.DataContext is not ComboViewModel combo) return;
+        if (DataContext is not MainWindowViewModel vm) return;
+        vm.ComboOverlay.ToggleStickyCombo(combo.Number);
     }
 
     private WindowEdge? GetResizeEdge(Point pos)

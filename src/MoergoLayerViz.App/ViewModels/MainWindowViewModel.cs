@@ -103,6 +103,22 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     [ObservableProperty] private bool _isLiveHighlightingEnabled;
     [ObservableProperty] private bool _isAutoLayerSwitchEnabled;
     [ObservableProperty] private bool _hasLayoutLoaded;
+
+    /// <summary>
+    /// When true the board renders numbered badges on combo keys and the legend
+    /// is visible below the board; when false the original corner-triangle
+    /// earmark is shown instead. Persisted across launches.
+    /// </summary>
+    [ObservableProperty] private bool _isComboOverlayVisible = true;
+
+    partial void OnIsComboOverlayVisibleChanged(bool value)
+    {
+        if (!value) ComboOverlay.ClearHighlights();
+        PersistSetting(s => s with { IsComboOverlayVisible = value });
+    }
+
+    [RelayCommand]
+    private void ToggleComboOverlay() => IsComboOverlayVisible = !IsComboOverlayVisible;
     [ObservableProperty] private string _toastMessage = "";
     [ObservableProperty] private bool _isToastVisible;
 
@@ -238,6 +254,14 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     /// <summary>Right-hand subset of <see cref="Keys"/>. Bound separately so the stacked-layout renderer can translate the half independently.</summary>
     public ObservableCollection<KeyViewModel> RightKeys { get; } = new();
     public ObservableCollection<LayerViewModel> Layers { get; } = new();
+
+    /// <summary>
+    /// Combo overlay state — legend collection, per-key wiring, hover/sticky
+    /// state machine, and label-override persistence. Exposed for XAML binding
+    /// (legend ItemsSource, edit-flyout commands) and for the toolbar toggle
+    /// handler that wipes highlights when the overlay is hidden.
+    /// </summary>
+    public ComboOverlayCoordinator ComboOverlay { get; }
 
     // Per-profile bounding boxes for each hand, recomputed on profile change.
     // Used to translate each half's container in stacked mode so the bounding
@@ -468,9 +492,11 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     public MainWindowViewModel(
         ISettingsService settingsService,
         IActiveWindowMonitor? activeWindowMonitor = null,
-        IMouseIdleMonitor? mouseIdleMonitor = null)
+        IMouseIdleMonitor? mouseIdleMonitor = null,
+        ComboOverlayCoordinator? comboOverlay = null)
     {
         _settingsService = settingsService;
+        ComboOverlay = comboOverlay ?? new ComboOverlayCoordinator(settingsService);
         var s = settingsService.Load();
         _profile = KeyboardProfileRegistry.TryResolve(s.Keyboard, out var p) ? p : new Go60Profile();
         _selectedKeyboard = _profile;
@@ -483,6 +509,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
             _pressHighlightColor = s.PressHighlightColor;
         if (!string.IsNullOrWhiteSpace(s.HotkeyKey))
             _hotkeyKey = s.HotkeyKey;
+        _isComboOverlayVisible = s.IsComboOverlayVisible;
         _isStackedLayout = s.StackedLayout;
         _stackedTopHand = string.IsNullOrWhiteSpace(s.StackedTopHand) ? "Left" : s.StackedTopHand;
         _isWindowsModifierStyle = string.Equals(s.ModifierStyle, "Windows", StringComparison.OrdinalIgnoreCase);
@@ -637,6 +664,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
             _bindingResolver = new LayerBindingResolver(config);
 
             RebuildLayers();
+            ComboOverlay.Rebuild(_config, _bindingResolver, _profile.Id, Keys);
             ApplyActiveLayer(0);
             HasLayoutLoaded = true;
             _loadedLayoutPath = path;
@@ -806,6 +834,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
             _config = null;
             _bindingResolver = null;
             Layers.Clear();
+            ComboOverlay.Clear();
             ActiveLayerIndex = 0;
             HasLayoutLoaded = false;
             SetLoadStatusBase(null);
@@ -813,6 +842,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         }
         else if (_config is not null)
         {
+            ComboOverlay.Rebuild(_config, _bindingResolver, _profile.Id, Keys);
             ApplyActiveLayer(ActiveLayerIndex);
             SetLoadStatusBase(null);
             StatusMessage = Loc.Instance.Format("Status_KeyboardSwitched", profile.DisplayName);
@@ -940,18 +970,6 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
 
         var holdTapByName = _config.HoldTaps.ToDictionary(h => h.Name, StringComparer.Ordinal);
 
-        var combosByKey = new Dictionary<int, List<MoergoCombo>>();
-        foreach (var combo in _config.Combos)
-        {
-            if (!combo.AppliesToLayer(layer.Index)) continue;
-            foreach (var keyIdx in combo.KeyPositions)
-            {
-                if (!combosByKey.TryGetValue(keyIdx, out var list))
-                    combosByKey[keyIdx] = list = new List<MoergoCombo>();
-                list.Add(combo);
-            }
-        }
-
         for (int i = 0; i < Keys.Count; i++)
         {
             // Resolve the effective binding by walking the predecessor graph:
@@ -972,14 +990,9 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
                 holdTap: holdTap);
         }
 
-        // Second pass — every key's label is now settled, so combo participants
-        // can be named by their rendered label (Q + W) in the tooltip.
-        string LabelLookup(int idx) => idx >= 0 && idx < Keys.Count ? Keys[idx].Label : "";
-        for (int i = 0; i < Keys.Count; i++)
-        {
-            if (combosByKey.TryGetValue(i, out var keyCombos))
-                Keys[i].SetCombos(keyCombos, LabelLookup);
-        }
+        // Combo state on each KeyViewModel is config-scoped and pushed once at
+        // load via BuildCombosForConfig — no per-layer refresh needed. The
+        // base-layer label freeze lives in ComboViewModel / KeyViewModel.
 
         for (int i = 0; i < Layers.Count; i++)
             Layers[i].IsSelected = Layers[i].Index == index;

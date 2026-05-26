@@ -71,6 +71,11 @@
   <data name="Tooltip_Keyboard"><value>Toetsenbord</value></data>
   <data name="Tooltip_StackedLayout"><value>Gestapelde indeling wisselen</value></data>
   <data name="Tooltip_ModifierStyle"><value>Modifier-symbolen: Mac / Windows</value></data>
+  <data name="Tooltip_ComboOverlay"><value>Combo-overlay — genummerde tegels + legenda</value></data>
+
+  <data name="Combo_EditLabelTitle"><value>Combo-label bewerken</value></data>
+  <data name="Combo_LabelSave"><value>Opslaan</value></data>
+  <data name="Combo_LabelClear"><value>Wissen</value></data>
 
   <data name="Status_Ready"><value>Klaar</value></data>
   <data name="Status_NoLayoutLoaded"><value>Geen layout geladen — klik op het mappictogram om een Moergo JSON te openen</value></data>

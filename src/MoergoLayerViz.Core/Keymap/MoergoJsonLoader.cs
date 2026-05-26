@@ -62,11 +62,18 @@ public static class MoergoJsonLoader
             .Where(ht => ht is not null)
             .Select(ht => ht!)
             .ToList();
-        var combos = (doc.Combos ?? new())
-            .Select(ToCombo)
-            .Where(c => c is not null)
-            .Select(c => c!)
-            .ToList();
+        var combos = new List<MoergoCombo>();
+        if (doc.Combos is { Count: > 0 })
+        {
+            int number = 1;
+            foreach (var src in doc.Combos)
+            {
+                var c = ToCombo(src, number);
+                if (c is null) continue;
+                combos.Add(c);
+                number++;
+            }
+        }
 
         DiagnosticLog.Info("JsonLoader",
             $"Loaded keyboard='{doc.Keyboard}' layers={layers.Count} macros={macros.Count} holdTaps={holdTaps.Count} combos={combos.Count}");
@@ -92,19 +99,20 @@ public static class MoergoJsonLoader
     /// <summary>
     /// Converts a wire-level combo into the public model. Skips entries that
     /// are missing a binding or that have fewer than two key positions (a
-    /// 1-key combo is meaningless).
+    /// 1-key combo is meaningless). Any <c>layers</c> field on the source
+    /// entry is ignored — combos in this viewer are config-scoped, not
+    /// layer-scoped.
     /// </summary>
-    private static MoergoCombo? ToCombo(MoergoComboDefinition src)
+    private static MoergoCombo? ToCombo(MoergoComboDefinition src, int number)
     {
         if (src.Binding is null) return null;
         var positions = src.KeyPositions ?? new();
         if (positions.Count < 2) return null;
-        var layers = src.Layers ?? new() { -1 };
         return new MoergoCombo(
+            number,
             src.Name ?? "",
             src.Description ?? "",
             positions.ToArray(),
-            layers.ToArray(),
             ToBinding(src.Binding));
     }
 

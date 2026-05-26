@@ -73,6 +73,12 @@
   <data name="Tooltip_Keyboard"><value>Keyboard</value></data>
   <data name="Tooltip_StackedLayout"><value>Toggle stacked layout</value></data>
   <data name="Tooltip_ModifierStyle"><value>Modifier symbols: Mac / Windows</value></data>
+  <data name="Tooltip_ComboOverlay"><value>Combo overlay — numbered pills + legend</value></data>
+
+  <!-- Combo legend -->
+  <data name="Combo_EditLabelTitle"><value>Edit combo label</value></data>
+  <data name="Combo_LabelSave"><value>Save</value></data>
+  <data name="Combo_LabelClear"><value>Clear</value></data>
 
   <!-- Status messages -->
   <data name="Status_Ready"><value>Ready</value></data>

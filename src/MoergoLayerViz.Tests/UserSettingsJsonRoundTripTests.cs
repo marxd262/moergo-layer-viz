@@ -210,6 +210,52 @@ public class UserSettingsJsonRoundTripTests
     }
 
     [Fact]
+    public void RoundTrip_PreservesComboLabelOverrides()
+    {
+        var original = new UserSettings
+        {
+            IsComboOverlayVisible = false,
+            ComboLabelOverrides = new Dictionary<string, Dictionary<string, ComboLabelOverride>>
+            {
+                ["GO60"] = new()
+                {
+                    ["1,2"] = new ComboLabelOverride { MainLabel = "MyF12" },
+                    ["3,4"] = new ComboLabelOverride { MainLabel = "MySpace" },
+                },
+                ["Glove80"] = new()
+                {
+                    ["10,11"] = new ComboLabelOverride { MainLabel = "Tab→" },
+                },
+            },
+        };
+
+        var json = JsonSerializer.Serialize(original, Options);
+        var rehydrated = JsonSerializer.Deserialize<UserSettings>(json, Options);
+
+        Assert.NotNull(rehydrated);
+        Assert.False(rehydrated!.IsComboOverlayVisible);
+        Assert.Equal("MyF12", rehydrated.ComboLabelOverrides["GO60"]["1,2"].MainLabel);
+        Assert.Equal("MySpace", rehydrated.ComboLabelOverrides["GO60"]["3,4"].MainLabel);
+        Assert.Equal("Tab→", rehydrated.ComboLabelOverrides["Glove80"]["10,11"].MainLabel);
+    }
+
+    [Fact]
+    public void Load_MissingComboLabelOverrides_ResolvesToEmpty()
+    {
+        // Settings files written before the combo overlay feature have no
+        // ComboLabelOverrides key. The default initializer should kick in.
+        var json = """{"SchemaVersion": 1, "Keyboard": "GO60"}""";
+
+        var parsed = JsonSerializer.Deserialize<UserSettings>(json, Options);
+
+        Assert.NotNull(parsed);
+        Assert.NotNull(parsed!.ComboLabelOverrides);
+        Assert.Empty(parsed.ComboLabelOverrides);
+        // Overlay visibility defaults to on so users discover the feature.
+        Assert.True(parsed.IsComboOverlayVisible);
+    }
+
+    [Fact]
     public void SettingsService_SaveThenLoad_RoundTripsAllPostRefactorFields()
     {
         var path = Path.Combine(Path.GetTempPath(), $"mlv-settings-{Guid.NewGuid()}.json");

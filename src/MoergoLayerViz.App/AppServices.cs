@@ -66,11 +66,14 @@ internal static class AppServices
         services.AddSingleton<ILocalization>(Loc.Instance);
         services.AddSingleton<ILayerColorService>(LayerColorPalette.Service);
 
+        services.AddSingleton<ComboOverlayCoordinator>();
+
         services.AddSingleton<MainWindowViewModel>(sp =>
             new MainWindowViewModel(
                 sp.GetRequiredService<ISettingsService>(),
                 sp.GetService<IActiveWindowMonitor>(),
-                sp.GetService<IMouseIdleMonitor>()));
+                sp.GetService<IMouseIdleMonitor>(),
+                sp.GetRequiredService<ComboOverlayCoordinator>()));
 
         services.AddTransient<SettingsViewModel>(sp =>
             new SettingsViewModel(

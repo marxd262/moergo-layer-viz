@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using Avalonia;
 using CommunityToolkit.Mvvm.ComponentModel;
 using MoergoLayerViz.App.Services;
@@ -47,9 +48,29 @@ public partial class KeyViewModel : ObservableObject
     private const string DarkForeground = AppTheme.BgBaseHex;
     private const string LightForeground = AppTheme.KeyDefaultFillHex;
 
-    [ObservableProperty] private bool _isPressed;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnyHighlight))]
+    private bool _isPressed;
     [ObservableProperty] private bool _isInCombo;
+    [ObservableProperty]
+    [NotifyPropertyChangedFor(nameof(IsAnyHighlight))]
+    private bool _isComboKeyHighlighted;
     [ObservableProperty] private string _tooltip = "";
+
+    /// <summary>
+    /// Aggregates the press pulse and the combo-hover highlight into a single
+    /// flag so the press-dot can light up identically for a live HID press
+    /// and a combo-legend hover.
+    /// </summary>
+    public bool IsAnyHighlight => IsPressed || IsComboKeyHighlighted;
+
+    /// <summary>
+    /// Numbered pill badges rendered on this key when the combo overlay is on.
+    /// Populated by <see cref="SetCombos"/>; capped at
+    /// <see cref="KeyComboBadgeViewModel.MaxBadgesPerKey"/> — extra combos remain
+    /// visible in the tooltip.
+    /// </summary>
+    public ObservableCollection<KeyComboBadgeViewModel> ComboBadges { get; } = new();
 
     /// <summary>
     /// Auto-contrasting label/icon color for the current <see cref="KeyFillColor"/>.
@@ -142,30 +163,37 @@ public partial class KeyViewModel : ObservableObject
         Position = position;
     }
 
-    // Tooltip without combo lines, captured so SetCombos can rebuild Tooltip
-    // by appending combo info without re-running the per-key binding logic.
+    // Tooltip is the base (per-layer binding info) + cached combo section.
+    // The combo section is config-scoped (set once via SetCombos at config
+    // load) so it survives layer changes; ApplyBinding only rebuilds the base
+    // half and re-composes.
     private string _baseTooltip = "";
+    private string _comboTooltipSection = "";
 
     /// <summary>
     /// Pushes a new binding from the active layer into this view model.
-    /// Driven by <see cref="MainWindowViewModel"/> on layer change. Combo info
-    /// is layered on afterwards via <see cref="SetCombos"/>, once every key's
-    /// label is settled (so the combo tooltip can name participants by label).
+    /// Driven by <see cref="MainWindowViewModel"/> on layer change. Combo
+    /// state (badges, tooltip section, <see cref="IsInCombo"/>) is config-
+    /// scoped and stays put across layer flips.
     /// </summary>
     public void ApplyBinding(KeyBinding binding, int? targetLayer, string? targetLayerName, string profileId, HoldTap? holdTap = null)
     {
         Behavior = binding.Behavior;
-        IsInCombo = false;
         KeyFillColor = ResolveFillColor(binding, targetLayer, profileId);
         IconName = KeyLabelFormatter.NormalizeIconName(binding.DecorationIcon);
         _baseTooltip = BuildTooltip(binding, targetLayerName, holdTap);
-        Tooltip = _baseTooltip;
+        ComposeTooltip();
 
         var (label, sub, topLeft) = ComputeLabels(binding, targetLayerName, holdTap);
         Label = label;
         Subscript = sub;
         TopLeftLabel = topLeft;
     }
+
+    private void ComposeTooltip() =>
+        Tooltip = string.IsNullOrEmpty(_comboTooltipSection)
+            ? _baseTooltip
+            : $"{_baseTooltip}\n\n{_comboTooltipSection}";
 
     /// <summary>
     /// decoration.icon acts as flair above the label — if a decoration.label
@@ -213,25 +241,37 @@ public partial class KeyViewModel : ObservableObject
     }
 
     /// <summary>
-    /// Appends combo information to the tooltip and flips <see cref="IsInCombo"/>.
-    /// Called by <see cref="MainWindowViewModel"/> in a second pass after every
-    /// key has its label settled, so participating keys can be named by their
-    /// rendered label (Q, W) rather than raw row/col coords.
+    /// Pushes the set of combos this key participates in. Combos are config-
+    /// scoped (not layer-scoped) so this is called once at keymap-config load.
+    /// Builds the numbered badge collection (capped at
+    /// <see cref="KeyComboBadgeViewModel.MaxBadgesPerKey"/>), caches a combo
+    /// tooltip section that <see cref="ApplyBinding"/> appends to its base
+    /// tooltip, and flips <see cref="IsInCombo"/>. The <paramref name="labelLookup"/>
+    /// should resolve base-layer labels so participating-key names don't shift
+    /// when the user switches layers.
     /// </summary>
     public void SetCombos(IReadOnlyList<MoergoCombo> combos, Func<int, string> labelLookup)
     {
+        ComboBadges.Clear();
+        IsComboKeyHighlighted = false;
+
         if (combos is null || combos.Count == 0)
         {
             IsInCombo = false;
-            Tooltip = _baseTooltip;
+            _comboTooltipSection = "";
+            ComposeTooltip();
             return;
         }
 
         IsInCombo = true;
-        var sections = new List<string> { _baseTooltip };
+        for (int i = 0; i < combos.Count && i < KeyComboBadgeViewModel.MaxBadgesPerKey; i++)
+            ComboBadges.Add(new KeyComboBadgeViewModel(combos[i].Number));
+
+        var sections = new List<string>();
         foreach (var combo in combos)
             sections.Add(KeyLabelFormatter.BuildComboSection(combo, labelLookup));
-        Tooltip = string.Join("\n\n", sections);
+        _comboTooltipSection = string.Join("\n\n", sections);
+        ComposeTooltip();
     }
 
     /// <summary>

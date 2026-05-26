@@ -106,9 +106,6 @@ internal sealed class MoergoComboDefinition
 
     [JsonPropertyName("keyPositions")]
     public List<int>? KeyPositions { get; set; }
-
-    [JsonPropertyName("layers")]
-    public List<int>? Layers { get; set; }
 }
 
 internal sealed class MoergoHoldTapDefinition
