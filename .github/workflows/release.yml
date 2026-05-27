@@ -241,6 +241,7 @@ jobs:
             --mainExe MoergoLayerViz.App \
             --packTitle "MoergoLayerViz" \
             --packAuthors "ovandongen" \
+            --icon src/MoergoLayerViz.App/Assets/icon.png \
             --channel linux-x64 \
             --outputDir ./vpk-output
           ls -lh ./vpk-output
