@@ -29,6 +29,9 @@ jobs:
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
 
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk --version 1.0.1
+
       - name: Resolve version
         id: ver
         shell: bash
@@ -48,18 +51,52 @@ jobs:
             -p:PublishSingleFile=false \
             -p:Version=${{ steps.ver.outputs.version }}
 
-      - name: Package zip
-        shell: pwsh
+      - name: Download previous releases for delta baseline
+        shell: bash
+        # vpk pack only computes a delta if previous full.nupkg files are
+        # present in --outputDir. On the very first release this finds
+        # nothing — that's fine; continue-on-error lets the job proceed.
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          $publish = "src/MoergoLayerViz.App/bin/Release/net10.0/win-x64/publish"
-          $zip = "MoergoLayerViz-${{ steps.ver.outputs.version }}-windows-x64.zip"
-          Compress-Archive -Path "$publish/*" -DestinationPath $zip -Force
-          Get-Item $zip | Format-List Name, Length
+          mkdir -p ./vpk-output
+          vpk download github \
+            --repoUrl https://github.com/ovandongen/moergo-layer-viz \
+            --channel win-x64 \
+            --outputDir ./vpk-output \
+            --token "$GITHUB_TOKEN"
+
+      - name: Pack with Velopack
+        shell: bash
+        run: |
+          publish="src/MoergoLayerViz.App/bin/Release/net10.0/win-x64/publish"
+          vpk pack \
+            --packId MoergoLayerViz \
+            --packVersion ${{ steps.ver.outputs.version }} \
+            --packDir "$publish" \
+            --mainExe MoergoLayerViz.App.exe \
+            --packTitle "MoergoLayerViz" \
+            --packAuthors "ovandongen" \
+            --channel win-x64 \
+            --outputDir ./vpk-output
+          ls -lh ./vpk-output
+
+      - name: Prune older-version nupkgs
+        shell: bash
+        # vpk download pulled prior releases' full.nupkg as the delta
+        # baseline; the pack step has now consumed them. Strip anything
+        # not stamped with the current version so the Release page only
+        # shows v${ver} assets.
+        run: |
+          ver="${{ steps.ver.outputs.version }}"
+          find ./vpk-output -name "MoergoLayerViz-*.nupkg" ! -name "MoergoLayerViz-${ver}-*" -delete
+          ls -lh ./vpk-output
 
       - uses: actions/upload-artifact@v4
         with:
           name: windows-x64
-          path: MoergoLayerViz-*-windows-x64.zip
+          path: vpk-output/**
           if-no-files-found: error
 
   build-macos:
@@ -77,6 +114,9 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk --version 1.0.1
 
       - name: Resolve version
         id: ver
@@ -105,19 +145,42 @@ jobs:
           # to re-grant Accessibility after upgrades — see README macOS notes.
           scripts/build-mac-app.sh -c Release -r ${{ matrix.rid }} -v ${{ steps.ver.outputs.version }}
 
-      - name: Package zip (ditto)
+      - name: Download previous releases for delta baseline
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
-          APP="src/MoergoLayerViz.App/bin/macos-bundle/MoergoLayerViz.app"
-          ZIP="MoergoLayerViz-${{ steps.ver.outputs.version }}-macos-${{ steps.ver.outputs.arch }}.zip"
-          # ditto preserves bundle structure, symlinks, extended attrs, and
-          # the codesign signature, which `zip` does not.
-          ditto -c -k --keepParent "$APP" "$ZIP"
-          ls -lh "$ZIP"
+          mkdir -p ./vpk-output
+          vpk download github \
+            --repoUrl https://github.com/ovandongen/moergo-layer-viz \
+            --channel osx-${{ steps.ver.outputs.arch }} \
+            --outputDir ./vpk-output \
+            --token "$GITHUB_TOKEN"
+
+      - name: Pack with Velopack
+        run: |
+          app="src/MoergoLayerViz.App/bin/macos-bundle/MoergoLayerViz.app"
+          vpk pack \
+            --packId MoergoLayerViz \
+            --packVersion ${{ steps.ver.outputs.version }} \
+            --packDir "$app" \
+            --mainExe MoergoLayerViz \
+            --packTitle "MoergoLayerViz" \
+            --packAuthors "ovandongen" \
+            --channel osx-${{ steps.ver.outputs.arch }} \
+            --outputDir ./vpk-output
+          ls -lh ./vpk-output
+
+      - name: Prune older-version nupkgs
+        run: |
+          ver="${{ steps.ver.outputs.version }}"
+          find ./vpk-output -name "MoergoLayerViz-*.nupkg" ! -name "MoergoLayerViz-${ver}-*" -delete
+          ls -lh ./vpk-output
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos-${{ steps.ver.outputs.arch }}
-          path: MoergoLayerViz-*-macos-${{ steps.ver.outputs.arch }}.zip
+          path: vpk-output/**
           if-no-files-found: error
 
   build-linux:
@@ -131,6 +194,9 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Install Velopack CLI
+        run: dotnet tool install -g vpk --version 1.0.1
 
       - name: Resolve version
         id: ver
@@ -151,20 +217,45 @@ jobs:
             -p:PublishSingleFile=false \
             -p:Version=${{ steps.ver.outputs.version }}
 
-      - name: Package tarball
+      - name: Download previous releases for delta baseline
+        shell: bash
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p ./vpk-output
+          vpk download github \
+            --repoUrl https://github.com/ovandongen/moergo-layer-viz \
+            --channel linux-x64 \
+            --outputDir ./vpk-output \
+            --token "$GITHUB_TOKEN"
+
+      - name: Pack with Velopack (AppImage)
         shell: bash
         run: |
-          # tar (not zip) preserves the +x bit on the launcher binary so
-          # users don't have to chmod after extracting.
           publish="src/MoergoLayerViz.App/bin/Release/net10.0/linux-x64/publish"
-          tarball="MoergoLayerViz-${{ steps.ver.outputs.version }}-linux-x64.tar.gz"
-          tar -czf "$tarball" -C "$publish" .
-          ls -lh "$tarball"
+          vpk [linux] pack \
+            --packId MoergoLayerViz \
+            --packVersion ${{ steps.ver.outputs.version }} \
+            --packDir "$publish" \
+            --mainExe MoergoLayerViz.App \
+            --packTitle "MoergoLayerViz" \
+            --packAuthors "ovandongen" \
+            --channel linux-x64 \
+            --outputDir ./vpk-output
+          ls -lh ./vpk-output
+
+      - name: Prune older-version nupkgs
+        shell: bash
+        run: |
+          ver="${{ steps.ver.outputs.version }}"
+          find ./vpk-output -name "MoergoLayerViz-*.nupkg" ! -name "MoergoLayerViz-${ver}-*" -delete
+          ls -lh ./vpk-output
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux-x64
-          path: MoergoLayerViz-*-linux-x64.tar.gz
+          path: vpk-output/**
           if-no-files-found: error
 
   release:
@@ -179,13 +270,12 @@ jobs:
           merge-multiple: true
 
       - name: List artifacts
-        run: ls -lh artifacts
+        run: ls -lhR artifacts
 
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            artifacts/MoergoLayerViz-*.zip
-            artifacts/MoergoLayerViz-*.tar.gz
+            artifacts/**
           generate_release_notes: true
           fail_on_unmatched_files: true

@@ -1,3 +1,4 @@
+using MoergoLayerViz.App.Services;
 using MoergoLayerViz.App.ViewModels;
 using MoergoLayerViz.Core.Layout;
 using MoergoLayerViz.Core.Settings;
@@ -28,7 +29,7 @@ public class SettingsViewModelMouseLayerClampingTests
         var main = new MainWindowViewModel(settings);
         // Mouse layer must be enabled for snapshot updates to flow back through
         // the engine without being short-circuited.
-        var vm = new SettingsViewModel(settings, main);
+        var vm = new SettingsViewModel(settings, main, new UpdateService());
         vm.IsMouseLayerEnabled = true;
         return vm;
     }

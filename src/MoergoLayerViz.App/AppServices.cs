@@ -67,6 +67,7 @@ internal static class AppServices
         services.AddSingleton<ILayerColorService>(LayerColorPalette.Service);
 
         services.AddSingleton<ComboOverlayCoordinator>();
+        services.AddSingleton<UpdateService>();
 
         services.AddSingleton<MainWindowViewModel>(sp =>
             new MainWindowViewModel(
@@ -78,7 +79,8 @@ internal static class AppServices
         services.AddTransient<SettingsViewModel>(sp =>
             new SettingsViewModel(
                 sp.GetRequiredService<ISettingsService>(),
-                sp.GetRequiredService<MainWindowViewModel>()));
+                sp.GetRequiredService<MainWindowViewModel>(),
+                sp.GetRequiredService<UpdateService>()));
 
         return services.BuildServiceProvider();
     }

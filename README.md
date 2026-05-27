@@ -12,42 +12,46 @@ No firmware flashing, no keymap editing. The app watches the keyboard via Raw HI
 
 ## Install & run
 
-Pre-built zips for each tagged release are on the [latest release](../../releases/latest) page. Each release ships:
+Each tagged release ships [Velopack](https://velopack.io/)-packed installers on the [latest release](../../releases/latest) page:
 
-- `MoergoLayerViz-<version>-windows-x64.zip` — Windows 10/11, x64.
-- `MoergoLayerViz-<version>-macos-arm64.zip` — Apple Silicon Macs (M-series).
-- `MoergoLayerViz-<version>-macos-x64.zip` — Intel Macs.
-- `MoergoLayerViz-<version>-linux-x64.tar.gz` — Linux, x64 (Raw HID only — see notes).
+- `Setup.exe` — Windows 10/11, x64.
+- `MoergoLayerViz-osx-arm64.pkg` — Apple Silicon Macs (M-series).
+- `MoergoLayerViz-osx-x64.pkg` — Intel Macs.
+- `MoergoLayerViz.AppImage` — Linux, x64 (Raw HID only — see notes).
+
+Once installed, the app **checks for updates automatically** on launch and applies them on the next restart when you click **Restart to install** in Settings → General → Updates. Auto-checking can be disabled there. Velopack handles the download (deltas where possible) and apply step — no more re-downloading installers for point releases.
 
 If you'd rather build it yourself, skip ahead to [Build from source](#build-from-source).
 
 ### Windows
 
-1. Download `MoergoLayerViz-<version>-windows-x64.zip` from [Releases](../../releases/latest) and unzip.
-2. Run `MoergoLayerViz.App.exe`.
+1. Download `Setup.exe` (`win-x64`) from [Releases](../../releases/latest) and run it. It installs into `%LocalAppData%\MoergoLayerViz` and creates a Start Menu shortcut.
 
-The first launch may show a SmartScreen warning ("Windows protected your PC") because the binary isn't signed by an MS-trusted publisher. Click **More info → Run anyway**. No additional permissions are required.
+The first launch may show a SmartScreen warning ("Windows protected your PC") because the installer isn't signed by an MS-trusted publisher. Click **More info → Run anyway**. No additional permissions are required.
 
 ### macOS
 
-1. Download `MoergoLayerViz-<version>-macos-arm64.zip` (or `-macos-x64.zip` on Intel) from [Releases](../../releases/latest).
-2. Extract the zip and move `MoergoLayerViz.app` to `/Applications`.
-3. The bundle is ad-hoc signed, so Gatekeeper will block the first launch. Clear the quarantine attribute once:
+Download the `.pkg` for your architecture — `osx-arm64` for Apple Silicon, `osx-x64` for Intel — from [Releases](../../releases/latest).
 
-   ```bash
-   xattr -cr /Applications/MoergoLayerViz.app
-   ```
+**First install:** Gatekeeper will block the unsigned `.pkg`. Two ways past it:
 
-4. Open the app. No additional permissions are required — v2.0 uses Carbon `RegisterEventHotKey` for the global show/hide hotkey, which is prompt-free, and reads layer state over Raw HID, which doesn't trigger Input Monitoring.
+- System Settings → Privacy & Security → **Open Anyway** after the failed install attempt, or
+- `xattr -dr com.apple.quarantine ~/Downloads/MoergoLayerViz*.pkg && sudo installer -pkg ~/Downloads/MoergoLayerViz*.pkg -target /`
+
+**Recommended:** in the installer, click **Change Install Location** and pick **"Install for me only"**. The app lands in `~/Applications/MoergoLayerViz.app`, user-owned, and follow-up in-app updates apply silently with no admin prompt. The default system-wide install (into `/Applications/MoergoLayerViz.app`) re-prompts for the admin password on every update that touches the bundle.
+
+The first install always needs admin regardless of which scope you pick; only follow-up updates differ.
+
+No additional permissions are required — v2.0 uses Carbon `RegisterEventHotKey` for the global show/hide hotkey, which is prompt-free, and reads layer state over Raw HID, which doesn't trigger Input Monitoring.
 
 ### Linux
 
 The Linux build supports boards running Raw HID firmware (see [Firmware support](#firmware-support)). Stock-firmware boards can't be tracked on any platform in v2.0 — see the v1.x callout above. The global show/hide hotkey (F12 by default) is unavailable on Linux: Wayland blocks process-global key capture by design, and the X11 / libinput workarounds need a daemon plus elevated permissions that this app doesn't ship. The hotkey row is hidden from Settings on Linux for that reason.
 
-1. Download `MoergoLayerViz-<version>-linux-x64.tar.gz` from [Releases](../../releases/latest) and extract:
+1. Download `MoergoLayerViz.AppImage` from [Releases](../../releases/latest) and make it executable:
 
    ```bash
-   tar -xzf MoergoLayerViz-*-linux-x64.tar.gz -C ~/Applications/MoergoLayerViz
+   chmod +x MoergoLayerViz.AppImage
    ```
 
 2. Grant your user access to the keyboard's `/dev/hidraw*` node. Two steps:
@@ -73,7 +77,7 @@ The Linux build supports boards running Raw HID firmware (see [Firmware support]
    ls -la /dev/hidraw*            # should show  crw-rw----  root plugdev ...
    ```
 
-3. Run `./MoergoLayerViz.App`.
+3. Run `./MoergoLayerViz.AppImage`. Velopack handles in-place updates on next launch when a new release is available.
 
 **Troubleshooting:** the app logs to `~/.config/MoergoLayerViz/log.txt`. After launch you should see a line like:
 

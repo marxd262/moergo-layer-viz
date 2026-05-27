@@ -203,4 +203,12 @@ public record UserSettings
     /// Empty / missing entries fall back to the formatter-derived default label.
     /// </summary>
     public Dictionary<string, Dictionary<string, ComboLabelOverride>> ComboLabelOverrides { get; init; } = new();
+
+    /// <summary>
+    /// When true, the app checks for updates a few seconds after launch and
+    /// surfaces the result in the Settings window. Manual "Check now" works
+    /// regardless. Defaults to true so installed users get update notifications
+    /// without opting in; can be disabled from Settings → General → Updates.
+    /// </summary>
+    public bool AutoCheckForUpdates { get; init; } = true;
 }

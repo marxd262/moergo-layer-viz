@@ -168,6 +168,13 @@
   <data name="Settings_CheckForUpdates"><value>Check for updates</value></data>
   <data name="Settings_Checking"><value>Checking…</value></data>
   <data name="Settings_UpToDate"><value>You're on the latest version.</value></data>
-  <data name="Settings_UpdateAvailable"><value>Update available: {0} — click to download.</value></data>
+  <data name="Settings_UpdateAvailable"><value>Update available: v{0} — downloading…</value></data>
   <data name="Settings_UpdateCheckFailed"><value>Could not check for updates.</value></data>
+  <data name="Settings_Updates"><value>Updates</value></data>
+  <data name="Settings_AutoCheckForUpdates"><value>Check for updates automatically</value></data>
+  <data name="Settings_AutoCheckHint"><value>When enabled, MoergoLayerViz checks for a new release shortly after launch and notifies you here.</value></data>
+  <data name="Settings_CheckNow"><value>Check now</value></data>
+  <data name="Settings_RestartToInstall"><value>Restart to install</value></data>
+  <data name="Settings_Downloading"><value>Downloading… {0}%</value></data>
+  <data name="Settings_UpdateReady"><value>v{0} ready — restart to install.</value></data>
 </root>

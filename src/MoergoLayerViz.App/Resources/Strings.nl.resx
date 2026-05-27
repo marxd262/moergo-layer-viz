@@ -161,6 +161,13 @@
   <data name="Settings_CheckForUpdates"><value>Controleer op updates</value></data>
   <data name="Settings_Checking"><value>Bezig met controleren…</value></data>
   <data name="Settings_UpToDate"><value>Je gebruikt de nieuwste versie.</value></data>
-  <data name="Settings_UpdateAvailable"><value>Update beschikbaar: {0} — klik om te downloaden.</value></data>
+  <data name="Settings_UpdateAvailable"><value>Update beschikbaar: v{0} — downloaden…</value></data>
   <data name="Settings_UpdateCheckFailed"><value>Kon niet controleren op updates.</value></data>
+  <data name="Settings_Updates"><value>Updates</value></data>
+  <data name="Settings_AutoCheckForUpdates"><value>Automatisch op updates controleren</value></data>
+  <data name="Settings_AutoCheckHint"><value>Indien ingeschakeld controleert MoergoLayerViz kort na het starten op een nieuwe versie en geeft je hier een melding.</value></data>
+  <data name="Settings_CheckNow"><value>Nu controleren</value></data>
+  <data name="Settings_RestartToInstall"><value>Herstart om te installeren</value></data>
+  <data name="Settings_Downloading"><value>Downloaden… {0}%</value></data>
+  <data name="Settings_UpdateReady"><value>v{0} klaar — herstart om te installeren.</value></data>
 </root>
