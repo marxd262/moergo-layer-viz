@@ -44,15 +44,17 @@ public class SettingsViewModelMainPropertyCoverageTests
         "ColorTrayIconByActiveLayer",
         "IsLiveHighlightingEnabled",
         "IsAutoLayerSwitchEnabled",
-        "IsAutoSwitchKeyboardLayerEnabled",
         "IsAlwaysOnTop",
 
-        // Child view-models — bound directly via DataContext.<Child> in
-        // MainWindow.axaml / BoardView.axaml; no SettingsVM mirror needed.
+        // Child view-models / sub-engines — bound directly via DataContext.<Child>
+        // in MainWindow.axaml / BoardView.axaml / SettingsWindow.axaml. The
+        // settings VM subscribes to AutoSwitch.PropertyChanged itself (see
+        // _autoSwitchPropagators), so no MainVM mirror is needed.
         "ComboOverlay",
         "Toast",
         "BoardLayout",
         "BoardStyle",
+        "AutoSwitch",
 
         // Pure derived / geometry / display-only — not user-facing in settings.
         "LoadInfoTooltip",
@@ -69,11 +71,6 @@ public class SettingsViewModelMainPropertyCoverageTests
         "StatusMessage",
         "HasLayoutLoaded",
         "IsHidSourceActive",
-
-        // Engine-derived state surfaced through MainVM but already covered
-        // by the propagator entries that change WouldFire / app-rules
-        // matching (ActiveWindow drives WouldFireText).
-        "MatchedAppLayerRule",
     };
 
     [Fact]

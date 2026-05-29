@@ -310,52 +310,14 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     public IRelayCommand<IKeyboardProfile> SelectKeyboardCommand { get; }
     public IRelayCommand OpenSettingsCommand { get; }
 
-    /// <inheritdoc cref="AutoSwitchEngine.ExitTapKey"/>
-    public int? ExitTapKey => _push.AutoSwitch.ExitTapKey;
-
-    /// <inheritdoc cref="AutoSwitchEngine.SetExitTapKey"/>
-    public void SetExitTapKey(int? index) => _push.AutoSwitch.SetExitTapKey(index);
-
-    /// <inheritdoc cref="AutoSwitchEngine.ActiveWindow"/>
-    public ActiveWindowInfo? ActiveWindow => _push.AutoSwitch.ActiveWindow;
-
-    /// <inheritdoc cref="AutoSwitchEngine.AppLayerRules"/>
-    public ObservableCollection<AppLayerRule> AppLayerRules => _push.AutoSwitch.AppLayerRules;
-
-    /// <inheritdoc cref="AutoSwitchEngine.IsEnabled"/>
-    public bool IsAutoSwitchKeyboardLayerEnabled
-    {
-        get => _push.AutoSwitch.IsEnabled;
-        set => _push.AutoSwitch.IsEnabled = value;
-    }
-
-    /// <inheritdoc cref="AutoSwitchEngine.FallbackMode"/>
-    public AutoSwitchFallbackMode AutoSwitchFallbackMode
-    {
-        get => _push.AutoSwitch.FallbackMode;
-        set => _push.AutoSwitch.FallbackMode = value;
-    }
-
-    /// <inheritdoc cref="AutoSwitchEngine.ExitOnTransparentKey"/>
-    public bool AutoSwitchExitOnTransparentKey
-    {
-        get => _push.AutoSwitch.ExitOnTransparentKey;
-        set => _push.AutoSwitch.ExitOnTransparentKey = value;
-    }
-
-    /// <inheritdoc cref="AutoSwitchEngine.ExitOnEmptyKey"/>
-    public bool AutoSwitchExitOnEmptyKey
-    {
-        get => _push.AutoSwitch.ExitOnEmptyKey;
-        set => _push.AutoSwitch.ExitOnEmptyKey = value;
-    }
-
-    /// <inheritdoc cref="AutoSwitchEngine.MatchedAppLayerRule"/>
-    public AppLayerRule? MatchedAppLayerRule => _push.AutoSwitch.MatchedAppLayerRule;
-
-    /// <inheritdoc cref="AutoSwitchEngine.ApplyAppLayerRules"/>
-    public void ApplyAppLayerRules(IReadOnlyList<AppLayerRule> rules) =>
-        _push.AutoSwitch.ApplyAppLayerRules(rules);
+    /// <summary>
+    /// The app→layer auto-switch engine, exposed directly. The settings VM and
+    /// window bind straight to its observable state — the engine is already an
+    /// ObservableObject and everything here is App-layer, so the old
+    /// pass-through facade (and the PropertyChanged relay that fed it) bought
+    /// nothing but a redundant hop.
+    /// </summary>
+    public AutoSwitchEngine AutoSwitch => _push.AutoSwitch;
 
     /// <summary>
     /// Returns the active profile's mouse-layer settings. Falls back to a
@@ -436,21 +398,8 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         // Transparent-key exit predicate reads the currently-loaded config at
         // call time, so swapping layouts or profiles needs no re-binding.
         _push.SetTransparencyPredicate(ClassifyBindingOnLayer);
-        _push.AutoSwitch.PropertyChanged += (_, e) =>
-        {
-            var relay = e.PropertyName switch
-            {
-                nameof(AutoSwitchEngine.IsEnabled) => nameof(IsAutoSwitchKeyboardLayerEnabled),
-                nameof(AutoSwitchEngine.FallbackMode) => nameof(AutoSwitchFallbackMode),
-                nameof(AutoSwitchEngine.ActiveWindow) => nameof(ActiveWindow),
-                nameof(AutoSwitchEngine.MatchedAppLayerRule) => nameof(MatchedAppLayerRule),
-                nameof(AutoSwitchEngine.ExitTapKey) => nameof(ExitTapKey),
-                nameof(AutoSwitchEngine.ExitOnTransparentKey) => nameof(AutoSwitchExitOnTransparentKey),
-                nameof(AutoSwitchEngine.ExitOnEmptyKey) => nameof(AutoSwitchExitOnEmptyKey),
-                _ => null,
-            };
-            if (relay is not null) OnPropertyChanged(relay);
-        };
+        // The settings VM subscribes to AutoSwitch.PropertyChanged directly
+        // (via the exposed AutoSwitch property), so no relay is needed here.
 
         QuitCommand = new RelayCommand(() => QuitRequested?.Invoke());
         ShowCommand = new RelayCommand(() => ShowWindowRequested?.Invoke());
