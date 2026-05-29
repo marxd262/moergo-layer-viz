@@ -168,28 +168,14 @@ public sealed partial class ComboOverlayCoordinator : ObservableObject
         var profileId = _profileId;
         var trimmed = label?.Trim();
 
-        Persist(s =>
+        _settings.Update(s =>
         {
-            var clone = new Dictionary<string, Dictionary<string, ComboLabelOverride>>();
-            foreach (var (pid, perCombo) in s.ComboLabelOverrides)
-                clone[pid] = new Dictionary<string, ComboLabelOverride>(perCombo);
-
-            if (string.IsNullOrEmpty(trimmed))
-            {
-                if (clone.TryGetValue(profileId, out var inner))
-                {
-                    inner.Remove(keyPositionsKey);
-                    if (inner.Count == 0) clone.Remove(profileId);
-                }
-            }
-            else
-            {
-                if (!clone.TryGetValue(profileId, out var inner))
-                    clone[profileId] = inner = new Dictionary<string, ComboLabelOverride>();
-                inner[keyPositionsKey] = new ComboLabelOverride { MainLabel = trimmed };
-            }
-            return s with { ComboLabelOverrides = clone };
-        });
+            var updated = string.IsNullOrEmpty(trimmed)
+                ? PerProfile.RemoveInner(s.ComboLabelOverrides, profileId, keyPositionsKey)
+                : PerProfile.SetInner(s.ComboLabelOverrides, profileId, keyPositionsKey,
+                    new ComboLabelOverride { MainLabel = trimmed });
+            return s with { ComboLabelOverrides = updated };
+        }, "ComboOverlay");
 
         Build();
     }
@@ -200,19 +186,6 @@ public sealed partial class ComboOverlayCoordinator : ObservableObject
         return s.ComboLabelOverrides.TryGetValue(_profileId, out var inner)
             ? new Dictionary<string, ComboLabelOverride>(inner)
             : new Dictionary<string, ComboLabelOverride>();
-    }
-
-    private void Persist(Func<UserSettings, UserSettings> update)
-    {
-        try
-        {
-            var s = _settings.Load();
-            _settings.Save(update(s));
-        }
-        catch (Exception ex)
-        {
-            DiagnosticLog.Warn("ComboOverlay", $"Persist settings failed: {ex.Message}");
-        }
     }
 
     /// <summary>Save the buffered <see cref="ComboViewModel.EditingLabel"/> as the override.</summary>

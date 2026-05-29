@@ -48,6 +48,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         _autoCheckForUpdates = _settingsService.Load().AutoCheckForUpdates;
         HotkeyKeyChoices = PlatformCapabilities.GetAvailableFKeys(mainViewModel.HotkeyKey);
         _mainViewModel.PropertyChanged += OnMainPropertyChanged;
+        _mainViewModel.BoardStyle.PropertyChanged += OnBoardStyleChanged;
         _mainViewModel.Layers.CollectionChanged += OnLayersCollectionChanged;
         _updateService.UpdateAvailable += OnUpdateAvailable;
         _updateService.DownloadProgress += OnDownloadProgress;
@@ -416,6 +417,7 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
         if (_disposed) return;
         _disposed = true;
         _mainViewModel.PropertyChanged -= OnMainPropertyChanged;
+        _mainViewModel.BoardStyle.PropertyChanged -= OnBoardStyleChanged;
         _mainViewModel.Layers.CollectionChanged -= OnLayersCollectionChanged;
         EditingRules.CollectionChanged -= OnEditingRulesChanged;
         _updateService.UpdateAvailable -= OnUpdateAvailable;
@@ -435,12 +437,12 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     /// </summary>
     public Color PressHighlightColor
     {
-        get => Color.TryParse(_mainViewModel.PressHighlightColor, out var c) ? c : Colors.Yellow;
-        set => _mainViewModel.PressHighlightColor = $"#{value.R:X2}{value.G:X2}{value.B:X2}";
+        get => Color.TryParse(_mainViewModel.BoardStyle.PressHighlightColor, out var c) ? c : Colors.Yellow;
+        set => _mainViewModel.BoardStyle.PressHighlightColor = $"#{value.R:X2}{value.G:X2}{value.B:X2}";
     }
 
     /// <summary>Hex string for the swatch preview Border in the picker button.</summary>
-    public string PressHighlightColorHex => _mainViewModel.PressHighlightColor;
+    public string PressHighlightColorHex => _mainViewModel.BoardStyle.PressHighlightColor;
 
     /// <summary>F-key choices offered for the global hotkey. F13–F24 first
     /// (effectively always free), then F1–F12. Filtered per OS — macOS
@@ -484,11 +486,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     private static readonly Dictionary<string, Action<SettingsViewModel>> _mainPropagators = new()
     {
         [nameof(MainWindowViewModel.BackgroundOpacity)] = s => s.OnPropertyChanged(nameof(BackgroundOpacityPercent)),
-        [nameof(MainWindowViewModel.PressHighlightColor)] = s =>
-        {
-            s.OnPropertyChanged(nameof(PressHighlightColor));
-            s.OnPropertyChanged(nameof(PressHighlightColorHex));
-        },
+        // PressHighlightColor lives on MainViewModel.BoardStyle now — its change
+        // is forwarded via OnBoardStyleChanged, not this MainVM dispatch table.
         [nameof(MainWindowViewModel.SelectedKeyboard)] = s =>
         {
             s.RebuildLayerEntries();
@@ -526,6 +525,17 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     {
         if (e.PropertyName is { } name && _mainPropagators.TryGetValue(name, out var propagate))
             propagate(this);
+    }
+
+    // PressHighlightColor moved to MainViewModel.BoardStyle; re-raise the
+    // derived picker properties when the child VM's fill changes.
+    private void OnBoardStyleChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(BoardStyleViewModel.PressHighlightColor))
+        {
+            OnPropertyChanged(nameof(PressHighlightColor));
+            OnPropertyChanged(nameof(PressHighlightColorHex));
+        }
     }
 
     /// <summary>Test-only handle on the propagator dispatch table. The
@@ -760,18 +770,8 @@ public partial class SettingsViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private bool _autoCheckForUpdates;
 
-    partial void OnAutoCheckForUpdatesChanged(bool value)
-    {
-        try
-        {
-            var s = _settingsService.Load();
-            _settingsService.Save(s with { AutoCheckForUpdates = value });
-        }
-        catch (Exception ex)
-        {
-            DiagnosticLog.Warn("Settings", $"Persist AutoCheckForUpdates failed: {ex.Message}");
-        }
-    }
+    partial void OnAutoCheckForUpdatesChanged(bool value) =>
+        _settingsService.Update(s => s with { AutoCheckForUpdates = value }, "Settings");
 
     [RelayCommand]
     private async Task CheckForUpdatesAsync()

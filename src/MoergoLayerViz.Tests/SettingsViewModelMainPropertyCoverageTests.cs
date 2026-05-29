@@ -39,8 +39,6 @@ public class SettingsViewModelMainPropertyCoverageTests
         // Bound directly in SettingsWindow.axaml — no SettingsVM transform needed.
         "HotkeyKey",
         "HotkeyModifiers",
-        "IsStackedLayout",
-        "StackedTopHand",
         "IsWindowsModifierStyle",
         "IsComboOverlayVisible",
         "ColorTrayIconByActiveLayer",
@@ -49,9 +47,12 @@ public class SettingsViewModelMainPropertyCoverageTests
         "IsAutoSwitchKeyboardLayerEnabled",
         "IsAlwaysOnTop",
 
-        // Combo overlay coordinator — bound directly via DataContext.ComboOverlay
-        // in MainWindow.axaml; no SettingsVM mirror needed.
+        // Child view-models — bound directly via DataContext.<Child> in
+        // MainWindow.axaml / BoardView.axaml; no SettingsVM mirror needed.
         "ComboOverlay",
+        "Toast",
+        "BoardLayout",
+        "BoardStyle",
 
         // Pure derived / geometry / display-only — not user-facing in settings.
         "LoadInfoTooltip",
@@ -59,24 +60,13 @@ public class SettingsViewModelMainPropertyCoverageTests
         "ActiveLayerIndex",
         "BoardBackground",
         "TabBackground",
-        "PressHighlightStrokeColor",
         "ModifierStyleIconData",
-        "CanvasWidth",
-        "CanvasHeight",
-        "BoardSurfaceWidth",
-        "BoardSurfaceHeight",
-        "LeftHandX",
-        "LeftHandY",
-        "RightHandX",
-        "RightHandY",
         "KeyboardStatusHint",
         "IsAppRulesTabVisible",
         "LoadedLayoutPath",
 
         // Transient main-window UI state — settings doesn't render these.
         "StatusMessage",
-        "ToastMessage",
-        "IsToastVisible",
         "HasLayoutLoaded",
         "IsHidSourceActive",
 

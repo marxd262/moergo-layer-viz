@@ -114,17 +114,15 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     partial void OnIsComboOverlayVisibleChanged(bool value)
     {
         if (!value) ComboOverlay.ClearHighlights();
-        PersistSetting(s => s with { IsComboOverlayVisible = value });
+        _settingsService.Update(s => s with { IsComboOverlayVisible = value }, "MainVM");
     }
 
     [RelayCommand]
     private void ToggleComboOverlay() => IsComboOverlayVisible = !IsComboOverlayVisible;
-    [ObservableProperty] private string _toastMessage = "";
-    [ObservableProperty] private bool _isToastVisible;
 
-    // Cancels the auto-dismiss timer on a re-shown toast or manual dismiss.
-    private CancellationTokenSource? _toastCts;
-    private const int ToastDurationMs = 4000;
+    /// <summary>Transient toast-banner state (message + self-cancelling auto-dismiss timer).</summary>
+    public ToastViewModel Toast { get; } = new();
+
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActiveLayerTintColor))]
     private int _activeLayerIndex;
@@ -156,32 +154,10 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     }
 
     partial void OnBackgroundOpacityChanged(double value) =>
-        PersistSetting(s => s with { BackgroundOpacity = value });
+        _settingsService.Update(s => s with { BackgroundOpacity = value }, "MainVM");
 
     partial void OnColorTrayIconByActiveLayerChanged(bool value) =>
-        PersistSetting(s => s with { ColorTrayIconByActiveLayer = value });
-
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(PressHighlightStrokeColor))]
-    private string _pressHighlightColor = AppTheme.PressHighlightDefaultHex;
-
-    /// <summary>
-    /// Rim color for the press dot — darkened version of <see cref="PressHighlightColor"/>
-    /// so the dot reads against light layer fills. Multiplies each channel by 0.55
-    /// to roughly mimic the original yellow→olive pairing in <see cref="AppTheme"/>.
-    /// </summary>
-    public string PressHighlightStrokeColor
-    {
-        get
-        {
-            if (MoergoLayerViz.Core.Colors.HexRgb.TryParse(PressHighlightColor, out var r, out var g, out var b))
-                return $"#{(int)(r * 0.55):X2}{(int)(g * 0.55):X2}{(int)(b * 0.55):X2}";
-            return AppTheme.PressHighlightStrokeFallbackHex;
-        }
-    }
-
-    partial void OnPressHighlightColorChanged(string value) =>
-        PersistSetting(s => s with { PressHighlightColor = value });
+        _settingsService.Update(s => s with { ColorTrayIconByActiveLayer = value }, "MainVM");
 
     /// <summary>
     /// Global show/hide hotkey key name (e.g. "F12"). Modifier handling
@@ -195,7 +171,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
 
     partial void OnHotkeyKeyChanged(string value)
     {
-        PersistSetting(s => s with { HotkeyKey = value });
+        _settingsService.Update(s => s with { HotkeyKey = value }, "MainVM");
         HotkeyKeyChanged?.Invoke(value);
     }
 
@@ -215,28 +191,13 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         var profileId = _profile.Id;
         LayerColorPalette.SetOverride(profileId, layerIndex, hex);
 
-        PersistSetting(s =>
+        _settingsService.Update(s =>
         {
-            var clone = new Dictionary<string, Dictionary<int, string>>();
-            foreach (var (pid, perLayer) in s.LayerColors)
-                clone[pid] = new Dictionary<int, string>(perLayer);
-
-            if (string.IsNullOrWhiteSpace(hex))
-            {
-                if (clone.TryGetValue(profileId, out var inner))
-                {
-                    inner.Remove(layerIndex);
-                    if (inner.Count == 0) clone.Remove(profileId);
-                }
-            }
-            else
-            {
-                if (!clone.TryGetValue(profileId, out var inner))
-                    clone[profileId] = inner = new Dictionary<int, string>();
-                inner[layerIndex] = hex!;
-            }
-            return s with { LayerColors = clone };
-        });
+            var updated = string.IsNullOrWhiteSpace(hex)
+                ? PerProfile.RemoveInner(s.LayerColors, profileId, layerIndex)
+                : PerProfile.SetInner(s.LayerColors, profileId, layerIndex, hex!);
+            return s with { LayerColors = updated };
+        }, "MainVM");
 
         // Repaint tab swatches in place (re-creating Layers would steal selection focus).
         foreach (var layer in Layers)
@@ -263,40 +224,11 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     /// </summary>
     public ComboOverlayCoordinator ComboOverlay { get; }
 
-    // Per-profile bounding boxes for each hand, recomputed on profile change.
-    // Used to translate each half's container in stacked mode so the bounding
-    // box starts at the canvas-edge margin.
-    private (double MinX, double MinY, double MaxX, double MaxY) _leftBounds;
-    private (double MinX, double MinY, double MaxX, double MaxY) _rightBounds;
+    /// <summary>Board geometry + stacked-mode state, bound by BoardView via DataContext.BoardLayout.</summary>
+    public BoardLayoutViewModel BoardLayout { get; }
 
-    /// <summary>Margin around the bounding boxes in stacked mode.</summary>
-    private const double StackedMargin = 30;
-    /// <summary>Vertical gap between the two halves in stacked mode.</summary>
-    private const double StackedGap = 60;
-
-    /// <summary>When true, the two halves render stacked vertically instead of side-by-side. Persisted across launches.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(CanvasWidth))]
-    [NotifyPropertyChangedFor(nameof(CanvasHeight))]
-    [NotifyPropertyChangedFor(nameof(LeftHandX))]
-    [NotifyPropertyChangedFor(nameof(LeftHandY))]
-    [NotifyPropertyChangedFor(nameof(RightHandX))]
-    [NotifyPropertyChangedFor(nameof(RightHandY))]
-    private bool _isStackedLayout;
-
-    partial void OnIsStackedLayoutChanged(bool value) =>
-        PersistSetting(s => s with { StackedLayout = value });
-
-    /// <summary>Which half ("Left"/"Right") sits on top in stacked mode. Ignored in horizontal mode.</summary>
-    [ObservableProperty]
-    [NotifyPropertyChangedFor(nameof(LeftHandX))]
-    [NotifyPropertyChangedFor(nameof(LeftHandY))]
-    [NotifyPropertyChangedFor(nameof(RightHandX))]
-    [NotifyPropertyChangedFor(nameof(RightHandY))]
-    private string _stackedTopHand = "Left";
-
-    partial void OnStackedTopHandChanged(string value) =>
-        PersistSetting(s => s with { StackedTopHand = value });
+    /// <summary>Press-highlight colors, bound by BoardView via DataContext.BoardStyle.</summary>
+    public BoardStyleViewModel BoardStyle { get; }
 
     /// <summary>
     /// True when the board renders Windows-style modifier glyphs (⊞ Alt Ctrl ⇧)
@@ -322,7 +254,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     partial void OnIsWindowsModifierStyleChanged(bool value)
     {
         ZmkKeycodeLabel.CurrentModifierStyle = value ? ModifierStyle.Windows : ModifierStyle.Mac;
-        PersistSetting(s => s with { ModifierStyle = value ? "Windows" : "Mac" });
+        _settingsService.Update(s => s with { ModifierStyle = value ? "Windows" : "Mac" }, "MainVM");
         // Same redraw hook SetLayerColorOverride uses: rebuilds every key's
         // labels against the freshly-set static.
         if (_config is not null) ApplyActiveLayer(ActiveLayerIndex);
@@ -330,48 +262,6 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
 
     [RelayCommand]
     private void ToggleWindowsModifierStyle() => IsWindowsModifierStyle = !IsWindowsModifierStyle;
-
-    /// <summary>Canvas size for the current keyboard profile and layout mode (drives BoardView's Canvas width/height).</summary>
-    public double CanvasWidth => IsStackedLayout
-        ? Math.Max(_leftBounds.MaxX - _leftBounds.MinX, _rightBounds.MaxX - _rightBounds.MinX) + 2 * StackedMargin
-        : _profile.CanvasWidth;
-
-    public double CanvasHeight => IsStackedLayout
-        ? (_leftBounds.MaxY - _leftBounds.MinY) + (_rightBounds.MaxY - _rightBounds.MinY) + StackedGap + 2 * StackedMargin
-        : _profile.CanvasHeight;
-
-    /// <summary>
-    /// Per-hand drawing surface size, independent of layout mode. Each per-hand
-    /// ItemsControl in BoardView binds Width/Height to these so it has a
-    /// non-zero render box — keys position themselves absolutely within it
-    /// using the original profile coordinates, and the surrounding Canvas.Left/
-    /// Top translates the whole surface for stacked mode.
-    /// </summary>
-    public double BoardSurfaceWidth => _profile.CanvasWidth;
-    public double BoardSurfaceHeight => _profile.CanvasHeight;
-
-    /// <summary>X translation applied to the left-hand container.</summary>
-    public double LeftHandX => IsStackedLayout ? StackedMargin - _leftBounds.MinX : 0;
-
-    /// <summary>Y translation applied to the left-hand container. Goes below the right hand if "Right" is on top.</summary>
-    public double LeftHandY => !IsStackedLayout
-        ? 0
-        : (StackedTopHand == "Right"
-            ? StackedMargin + (_rightBounds.MaxY - _rightBounds.MinY) + StackedGap - _leftBounds.MinY
-            : StackedMargin - _leftBounds.MinY);
-
-    /// <summary>X translation applied to the right-hand container.</summary>
-    public double RightHandX => IsStackedLayout ? StackedMargin - _rightBounds.MinX : 0;
-
-    /// <summary>Y translation applied to the right-hand container. Goes below the left hand by default.</summary>
-    public double RightHandY => !IsStackedLayout
-        ? 0
-        : (StackedTopHand == "Right"
-            ? StackedMargin - _rightBounds.MinY
-            : StackedMargin + (_leftBounds.MaxY - _leftBounds.MinY) + StackedGap - _rightBounds.MinY);
-
-    [RelayCommand]
-    private void ToggleStackedLayout() => IsStackedLayout = !IsStackedLayout;
 
     /// <summary>All keyboard profiles the user can switch between, for the picker flyout.</summary>
     public IReadOnlyList<IKeyboardProfile> AvailableKeyboards => KeyboardProfileRegistry.All;
@@ -418,7 +308,6 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     public IRelayCommand OpenLogFolderCommand { get; }
     public IRelayCommand CopyDiagnosticsCommand { get; }
     public IRelayCommand<IKeyboardProfile> SelectKeyboardCommand { get; }
-    public IRelayCommand DismissToastCommand { get; }
     public IRelayCommand OpenSettingsCommand { get; }
 
     /// <inheritdoc cref="AutoSwitchEngine.ExitTapKey"/>
@@ -477,9 +366,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     {
         if (_push.MouseLayer is not null) return _push.MouseLayer.CurrentSettings;
         var s = _settingsService.Load();
-        return s.MouseLayer.TryGetValue(_profile.Id, out var loaded)
-            ? loaded
-            : new MouseLayerSettings();
+        return s.MouseLayer.GetForProfile(_profile.Id, new MouseLayerSettings());
     }
 
     /// <summary>
@@ -505,14 +392,18 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         _isLiveHighlightingEnabled = s.LiveKeyHighlighting;
         _isAutoLayerSwitchEnabled = s.AutoLayerSwitch;
         _backgroundOpacity = Math.Clamp(s.BackgroundOpacity, 0.0, 1.0);
-        if (!string.IsNullOrWhiteSpace(s.PressHighlightColor))
-            _pressHighlightColor = s.PressHighlightColor;
         if (!string.IsNullOrWhiteSpace(s.HotkeyKey))
             _hotkeyKey = s.HotkeyKey;
         _isComboOverlayVisible = s.IsComboOverlayVisible;
-        _isStackedLayout = s.StackedLayout;
-        _stackedTopHand = string.IsNullOrWhiteSpace(s.StackedTopHand) ? "Left" : s.StackedTopHand;
         _isWindowsModifierStyle = string.Equals(s.ModifierStyle, "Windows", StringComparison.OrdinalIgnoreCase);
+
+        // Board geometry + press colors live in dedicated child VMs shared with
+        // the exit-key picker via IBoardSurface. Seeded from settings here; both
+        // persist their own changes through ISettingsService.
+        BoardLayout = new BoardLayoutViewModel(_profile, settingsService, s.StackedLayout, s.StackedTopHand);
+        BoardStyle = new BoardStyleViewModel(
+            string.IsNullOrWhiteSpace(s.PressHighlightColor) ? AppTheme.PressHighlightDefaultHex : s.PressHighlightColor,
+            settingsService);
         // Seed the static *before* the first ApplyActiveLayer so initial render
         // already uses the persisted glyph set (the partial change handler is
         // not invoked when the backing field is assigned directly).
@@ -576,7 +467,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         TogglePinCommand = new RelayCommand(() =>
         {
             IsAlwaysOnTop = !IsAlwaysOnTop;
-            PersistSetting(s2 => s2 with { AlwaysOnTop = IsAlwaysOnTop });
+            _settingsService.Update(s2 => s2 with { AlwaysOnTop = IsAlwaysOnTop }, "MainVM");
         });
         ToggleLiveHighlightingCommand = new RelayCommand(ToggleLiveHighlighting);
         OpenLogFolderCommand = new RelayCommand(() =>
@@ -600,7 +491,6 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
             if (CopyDiagnosticsRequested is not null) await CopyDiagnosticsRequested();
         });
         SelectKeyboardCommand = new RelayCommand<IKeyboardProfile>(SelectKeyboard);
-        DismissToastCommand = new RelayCommand(DismissToast);
         OpenSettingsCommand = new RelayCommand(() => OpenSettingsRequested?.Invoke());
 
         BuildKeysFromProfile();
@@ -646,7 +536,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
                     _profile = matching;
                     SelectedKeyboard = matching;
                     BuildKeysFromProfile();
-                    PersistSetting(s => s with { Keyboard = matching.Id });
+                    _settingsService.Update(s => s with { Keyboard = matching.Id }, "MainVM");
                     // Re-scope HID discovery — see SelectKeyboard for context.
                     _hid.SetActiveProfile(matching);
                     autoSwitchedTo = matching;
@@ -670,11 +560,9 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
             _loadedLayoutPath = path;
             _lastLoadError = null;
 
-            PersistSetting(s =>
-            {
-                var paths = new Dictionary<string, string>(s.LayoutJsonPaths) { [_profile.Id] = path };
-                return s with { LayoutJsonPaths = paths };
-            });
+            _settingsService.Update(
+                s => s with { LayoutJsonPaths = PerProfile.Set(s.LayoutJsonPaths, _profile.Id, path) },
+                "MainVM");
 
             var baseMsg = Loc.Instance.Format("Status_Loaded",
                 Path.GetFileName(path), config.LayerCount);
@@ -698,48 +586,10 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
             StatusMessage = Loc.Instance.Format("Status_LoadErrorFormat", ex.Message);
             _lastLoadError = $"{path}: {ex.GetType().Name}: {ex.Message}";
             DiagnosticLog.Error("MainVM", $"Load failed: {ex}");
-            ShowToast(Loc.Instance.Format("Toast_LoadFailedFormat", Path.GetFileName(path), ex.Message));
+            Toast.Show(Loc.Instance.Format("Toast_LoadFailedFormat", Path.GetFileName(path), ex.Message));
         }
     }
 
-    /// <summary>
-    /// Shows a transient toast banner that auto-dismisses after
-    /// <see cref="ToastDurationMs"/>. Re-entry cancels the previous timer so
-    /// the new message gets the full display window. Click on the toast
-    /// dismisses early via <see cref="DismissToastCommand"/>.
-    /// </summary>
-    public void ShowToast(string message)
-    {
-        _toastCts?.Cancel();
-        _toastCts?.Dispose();
-        var cts = new CancellationTokenSource();
-        _toastCts = cts;
-
-        ToastMessage = message;
-        IsToastVisible = true;
-
-        _ = Task.Delay(ToastDurationMs, cts.Token).ContinueWith(t =>
-        {
-            if (t.IsCanceled) return;
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                if (_toastCts == cts)
-                {
-                    IsToastVisible = false;
-                    _toastCts = null;
-                    cts.Dispose();
-                }
-            });
-        }, TaskScheduler.Default);
-    }
-
-    private void DismissToast()
-    {
-        _toastCts?.Cancel();
-        _toastCts?.Dispose();
-        _toastCts = null;
-        IsToastVisible = false;
-    }
 
     /// <summary>
     /// Builds a snapshot of runtime state (active settings, loaded layout,
@@ -794,20 +644,9 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
             (pos.Hand == Hand.Left ? LeftKeys : RightKeys).Add(vm);
         }
 
-        // Rotated bounds matter for boards like Glove80 whose shared-pivot thumb
-        // cluster swings far outside the unrotated (X, Y, W, H) rect.
-        _leftBounds = _profile.Keys.Where(k => k.Hand == Hand.Left).RotatedBounds();
-        _rightBounds = _profile.Keys.Where(k => k.Hand == Hand.Right).RotatedBounds();
-
-        // Layout-derived properties depend on the freshly-computed bounds.
-        OnPropertyChanged(nameof(CanvasWidth));
-        OnPropertyChanged(nameof(CanvasHeight));
-        OnPropertyChanged(nameof(BoardSurfaceWidth));
-        OnPropertyChanged(nameof(BoardSurfaceHeight));
-        OnPropertyChanged(nameof(LeftHandX));
-        OnPropertyChanged(nameof(LeftHandY));
-        OnPropertyChanged(nameof(RightHandX));
-        OnPropertyChanged(nameof(RightHandY));
+        // Hands over the new profile so the layout VM recomputes its bounds and
+        // re-raises the geometry the board binds against.
+        BoardLayout.SetProfile(_profile);
     }
 
     private void SelectKeyboard(IKeyboardProfile? profile)
@@ -848,7 +687,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
             StatusMessage = Loc.Instance.Format("Status_KeyboardSwitched", profile.DisplayName);
         }
 
-        PersistSetting(s => s with { Keyboard = profile.Id });
+        _settingsService.Update(s => s with { Keyboard = profile.Id }, "MainVM");
         DiagnosticLog.Info("MainVM", $"Keyboard profile switched to {profile.Id}");
 
         // Re-scope HID discovery to the new profile so a Go60 stops feeding
@@ -883,12 +722,9 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         }
 
         DiagnosticLog.Warn("MainVM", $"Stored layout for {profileId} is missing on disk: {stored}");
-        PersistSetting(curr =>
-        {
-            var paths = new Dictionary<string, string>(curr.LayoutJsonPaths);
-            paths.Remove(profileId);
-            return curr with { LayoutJsonPaths = paths };
-        });
+        _settingsService.Update(
+            curr => curr with { LayoutJsonPaths = PerProfile.Remove(curr.LayoutJsonPaths, profileId) },
+            "MainVM");
         return false;
     }
 
@@ -1011,11 +847,11 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         // The underlying booleans stay distinct in UserSettings so any
         // future independent control point can still flip them apart.
         IsAutoLayerSwitchEnabled = enable;
-        PersistSetting(s2 => s2 with
+        _settingsService.Update(s2 => s2 with
         {
             LiveKeyHighlighting = enable,
             AutoLayerSwitch = enable,
-        });
+        }, "MainVM");
 
         if (enable)
         {
@@ -1086,16 +922,4 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         ApplyActiveLayer(0);
     }
 
-    private void PersistSetting(Func<UserSettings, UserSettings> update)
-    {
-        try
-        {
-            var s = _settingsService.Load();
-            _settingsService.Save(update(s));
-        }
-        catch (Exception ex)
-        {
-            DiagnosticLog.Warn("MainVM", $"Persist settings failed: {ex.Message}");
-        }
-    }
 }

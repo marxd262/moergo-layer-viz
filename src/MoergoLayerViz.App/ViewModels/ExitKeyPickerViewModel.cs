@@ -29,6 +29,14 @@ public partial class ExitKeyPickerViewModel : ObservableObject, IBoardSurface
     {
         _profile = profile;
 
+        // Picker always renders horizontal (non-stacked) with no persistence.
+        BoardLayout = new BoardLayoutViewModel(profile);
+        // Press dots aren't pulsed in the picker (IsPressed is never set), but
+        // BoardView binds these regardless so the brush parses cleanly.
+        BoardStyle = new BoardStyleViewModel(
+            AppTheme.PressHighlightDefaultHex,
+            strokeOverride: AppTheme.PickerPressStrokeHex);
+
         foreach (var pos in _profile.Keys)
         {
             // Stripped KeyViewModel: empty Label / Subscript / Icon /
@@ -68,21 +76,8 @@ public partial class ExitKeyPickerViewModel : ObservableObject, IBoardSurface
     public ObservableCollection<KeyViewModel> LeftKeys { get; } = new();
     public ObservableCollection<KeyViewModel> RightKeys { get; } = new();
 
-    // IBoardSurface — picker always renders in horizontal (non-stacked) mode
-    // so the hand offsets are zero and the canvas size matches the profile.
-    public double CanvasWidth => _profile.CanvasWidth;
-    public double CanvasHeight => _profile.CanvasHeight;
-    public double BoardSurfaceWidth => _profile.CanvasWidth;
-    public double BoardSurfaceHeight => _profile.CanvasHeight;
-    public double LeftHandX => 0;
-    public double LeftHandY => 0;
-    public double RightHandX => 0;
-    public double RightHandY => 0;
-
-    // Press dots aren't pulsed in the picker (IsPressed is never set), but
-    // BoardView binds these regardless so the brush parses cleanly.
-    public string PressHighlightColor => AppTheme.PressHighlightDefaultHex;
-    public string PressHighlightStrokeColor => AppTheme.PickerPressStrokeHex;
+    public BoardLayoutViewModel BoardLayout { get; }
+    public BoardStyleViewModel BoardStyle { get; }
 
     public Action<int>? OnKeyTapped => ToggleKey;
 

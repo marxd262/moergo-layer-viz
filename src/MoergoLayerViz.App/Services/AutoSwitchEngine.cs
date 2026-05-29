@@ -101,7 +101,7 @@ public sealed partial class AutoSwitchEngine : ObservableObject
 
     partial void OnIsEnabledChanged(bool value)
     {
-        PersistSetting(s => s with { AutoSwitchKeyboardLayer = value });
+        _settingsService.Update(s => s with { AutoSwitchKeyboardLayer = value }, "AutoSwitch");
         // Clear engine state so re-enabling immediately re-fires the current
         // match, and so disabling doesn't leave stale state.
         _session = new AutoSwitchSession.Idle();
@@ -115,12 +115,9 @@ public sealed partial class AutoSwitchEngine : ObservableObject
     partial void OnFallbackModeChanged(AutoSwitchFallbackMode value)
     {
         var profileId = _profile.Id;
-        PersistSetting(s =>
-        {
-            var clone = new Dictionary<string, AutoSwitchFallbackMode>(s.AutoSwitchFallback);
-            clone[profileId] = value;
-            return s with { AutoSwitchFallback = clone };
-        });
+        _settingsService.Update(
+            s => s with { AutoSwitchFallback = PerProfile.Set(s.AutoSwitchFallback, profileId, value) },
+            "AutoSwitch");
     }
 
     [ObservableProperty]
@@ -129,13 +126,9 @@ public sealed partial class AutoSwitchEngine : ObservableObject
     partial void OnExitOnTransparentKeyChanged(bool value)
     {
         var profileId = _profile.Id;
-        PersistSetting(s =>
-        {
-            var clone = new Dictionary<string, bool>(s.AutoSwitchExitOnTransparent);
-            if (value) clone[profileId] = true;
-            else clone.Remove(profileId);
-            return s with { AutoSwitchExitOnTransparent = clone };
-        });
+        _settingsService.Update(
+            s => s with { AutoSwitchExitOnTransparent = PerProfile.SetOrRemove(s.AutoSwitchExitOnTransparent, profileId, value, true) },
+            "AutoSwitch");
     }
 
     [ObservableProperty]
@@ -144,13 +137,9 @@ public sealed partial class AutoSwitchEngine : ObservableObject
     partial void OnExitOnEmptyKeyChanged(bool value)
     {
         var profileId = _profile.Id;
-        PersistSetting(s =>
-        {
-            var clone = new Dictionary<string, bool>(s.AutoSwitchExitOnEmpty);
-            if (value) clone[profileId] = true;
-            else clone.Remove(profileId);
-            return s with { AutoSwitchExitOnEmpty = clone };
-        });
+        _settingsService.Update(
+            s => s with { AutoSwitchExitOnEmpty = PerProfile.SetOrRemove(s.AutoSwitchExitOnEmpty, profileId, value, true) },
+            "AutoSwitch");
     }
 
     private AppLayerRule? _matchedAppLayerRule;
@@ -171,13 +160,9 @@ public sealed partial class AutoSwitchEngine : ObservableObject
         OnPropertyChanged(nameof(ExitTapKey));
 
         var profileId = _profile.Id;
-        PersistSetting(s =>
-        {
-            var clone = new Dictionary<string, int>(s.AutoSwitchExitKey);
-            if (clean is null) clone.Remove(profileId);
-            else clone[profileId] = clean.Value;
-            return s with { AutoSwitchExitKey = clone };
-        });
+        _settingsService.Update(
+            s => s with { AutoSwitchExitKey = PerProfile.SetOrRemove(s.AutoSwitchExitKey, profileId, clean is not null, clean ?? 0) },
+            "AutoSwitch");
     }
 
     /// <summary>Replaces the active profile's rule list with
@@ -272,25 +257,17 @@ public sealed partial class AutoSwitchEngine : ObservableObject
     {
         var profileId = _profile.Id;
         var snapshot = AppLayerRules.ToList();
-        PersistSetting(s =>
-        {
-            var clone = new Dictionary<string, List<AppLayerRule>>();
-            foreach (var (pid, list) in s.AppLayerRules)
-                clone[pid] = new List<AppLayerRule>(list);
-            if (snapshot.Count == 0) clone.Remove(profileId);
-            else clone[profileId] = snapshot;
-            return s with { AppLayerRules = clone };
-        });
+        _settingsService.Update(
+            s => s with { AppLayerRules = PerProfile.SetOrRemove(s.AppLayerRules, profileId, snapshot.Count > 0, snapshot) },
+            "AutoSwitch");
     }
 
     private void ReloadAutoSwitchFallback()
     {
         var s = _settingsService.Load();
-        FallbackMode = s.AutoSwitchFallback.TryGetValue(_profile.Id, out var m)
-            ? m
-            : AutoSwitchFallbackMode.Base;
-        ExitOnTransparentKey = s.AutoSwitchExitOnTransparent.TryGetValue(_profile.Id, out var t) && t;
-        ExitOnEmptyKey = s.AutoSwitchExitOnEmpty.TryGetValue(_profile.Id, out var e) && e;
+        FallbackMode = s.AutoSwitchFallback.GetForProfile(_profile.Id, AutoSwitchFallbackMode.Base);
+        ExitOnTransparentKey = s.AutoSwitchExitOnTransparent.GetForProfile(_profile.Id, false);
+        ExitOnEmptyKey = s.AutoSwitchExitOnEmpty.GetForProfile(_profile.Id, false);
     }
 
     private void ReloadExitTapKey()
@@ -310,7 +287,7 @@ public sealed partial class AutoSwitchEngine : ObservableObject
     private int? ResolveMouseLayerIndex()
     {
         var s = _settingsService.Load();
-        return s.MouseLayer.TryGetValue(_profile.Id, out var ms) ? ms.MouseLayerIndex : null;
+        return s.MouseLayer.GetForProfile(_profile.Id, new MouseLayerSettings()).MouseLayerIndex;
     }
 
     /// <summary>
@@ -404,18 +381,5 @@ public sealed partial class AutoSwitchEngine : ObservableObject
         bool shouldRun = IsEnabled && AppLayerRules.Count > 0;
         if (shouldRun) monitor.Start();
         else monitor.Stop();
-    }
-
-    private void PersistSetting(Func<UserSettings, UserSettings> update)
-    {
-        try
-        {
-            var s = _settingsService.Load();
-            _settingsService.Save(update(s));
-        }
-        catch (Exception ex)
-        {
-            DiagnosticLog.Warn("AutoSwitch", $"Persist failed: {ex.Message}");
-        }
     }
 }

@@ -50,8 +50,8 @@
                          VerticalAlignment="Top"
                          Margin="0,5,5,0"
                          IsHitTestVisible="False"
-                         Fill="{Binding DataContext.PressHighlightColor, ElementName=Board, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
-                         Stroke="{Binding DataContext.PressHighlightStrokeColor, ElementName=Board, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
+                         Fill="{Binding DataContext.BoardStyle.PressHighlightColor, ElementName=Board, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
+                         Stroke="{Binding DataContext.BoardStyle.PressHighlightStrokeColor, ElementName=Board, Converter={x:Static convApp:HexColorToBrushConverter.Instance}}"
                          StrokeThickness="1" />
 
                 <!-- Combo-indicator earmark: right triangle hugging the
@@ -168,6 +168,45 @@
         </DataTemplate>
     </UserControl.Resources>
 
+    <!-- Shared key-cap styles, applied to both per-hand ItemsControls below.
+         These are class-selector styles (no per-item Binding), so they hoist
+         safely here instead of being duplicated inside each ItemsControl.Styles.
+         Background / BorderBrush / Foreground live on Style setters (not inline)
+         because local attribute values beat Style setters in Avalonia — leaving
+         them inline would shadow the .active swap and break the legend → pill
+         highlight direction. -->
+    <UserControl.Styles>
+        <Style Selector="Ellipse.pressDot">
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <DoubleTransition Property="Opacity" Duration="0:0:0.08" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Ellipse.pressDot.active">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
+        <Style Selector="Border.comboBadge">
+            <Setter Property="Background" Value="{StaticResource ComboFill}" />
+            <Setter Property="BorderBrush" Value="{StaticResource ComboStroke}" />
+            <Setter Property="Transitions">
+                <Transitions>
+                    <BrushTransition Property="Background" Duration="0:0:0.12" />
+                </Transitions>
+            </Setter>
+        </Style>
+        <Style Selector="Border.comboBadge TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource BgBase}" />
+        </Style>
+        <Style Selector="Border.comboBadge.active">
+            <Setter Property="Background" Value="{StaticResource ComboStroke}" />
+        </Style>
+        <Style Selector="Border.comboBadge.active TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Text}" />
+        </Style>
+    </UserControl.Styles>
+
     <!-- Viewbox auto-scales the fixed canvas to whatever room the window
          provides. Outer Canvas hosts two per-hand groups: each
          ItemsControl renders its keys at their absolute Position.X/Y, but
@@ -179,13 +218,13 @@
          variant doesn't rebind reliably per item in Avalonia 11, which
          collapses every key to (0,0). -->
     <Viewbox Stretch="Uniform" StretchDirection="Both" ClipToBounds="False">
-        <Canvas Width="{Binding CanvasWidth}" Height="{Binding CanvasHeight}"
+        <Canvas Width="{Binding BoardLayout.CanvasWidth}" Height="{Binding BoardLayout.CanvasHeight}"
                 Background="Transparent" ClipToBounds="False">
             <ItemsControl ItemsSource="{Binding LeftKeys}"
-                          Width="{Binding BoardSurfaceWidth}"
-                          Height="{Binding BoardSurfaceHeight}"
-                          Canvas.Left="{Binding LeftHandX}"
-                          Canvas.Top="{Binding LeftHandY}"
+                          Width="{Binding BoardLayout.BoardSurfaceWidth}"
+                          Height="{Binding BoardLayout.BoardSurfaceHeight}"
+                          Canvas.Left="{Binding BoardLayout.LeftHandX}"
+                          Canvas.Top="{Binding BoardLayout.LeftHandY}"
                           ClipToBounds="False"
                           ItemTemplate="{StaticResource KeyTemplate}">
                 <ItemsControl.ItemsPanel>
@@ -193,53 +232,23 @@
                         <Canvas />
                     </ItemsPanelTemplate>
                 </ItemsControl.ItemsPanel>
+                <!-- Per-item Canvas positioning stays scoped per ItemsControl
+                     (the ContentPresenter selector + per-item {Binding} setters
+                     are the proven pattern; see CLAUDE.md). The press-dot and
+                     combo-badge class styles are shared in UserControl.Styles. -->
                 <ItemsControl.Styles>
                     <Style Selector="ContentPresenter">
                         <Setter Property="Canvas.Left" Value="{Binding Position.X}" />
                         <Setter Property="Canvas.Top" Value="{Binding Position.Y}" />
-                    </Style>
-                    <Style Selector="Ellipse.pressDot">
-                        <Setter Property="Opacity" Value="0" />
-                        <Setter Property="Transitions">
-                            <Transitions>
-                                <DoubleTransition Property="Opacity" Duration="0:0:0.08" />
-                            </Transitions>
-                        </Setter>
-                    </Style>
-                    <Style Selector="Ellipse.pressDot.active">
-                        <Setter Property="Opacity" Value="1" />
-                    </Style>
-                    <!-- Background / BorderBrush / Foreground live on Style
-                         setters (not inline) because local attribute values
-                         beat Style setters in Avalonia — leaving them inline
-                         would shadow the .active swap and break the legend →
-                         pill highlight direction. -->
-                    <Style Selector="Border.comboBadge">
-                        <Setter Property="Background" Value="{StaticResource ComboFill}" />
-                        <Setter Property="BorderBrush" Value="{StaticResource ComboStroke}" />
-                        <Setter Property="Transitions">
-                            <Transitions>
-                                <BrushTransition Property="Background" Duration="0:0:0.12" />
-                            </Transitions>
-                        </Setter>
-                    </Style>
-                    <Style Selector="Border.comboBadge TextBlock">
-                        <Setter Property="Foreground" Value="{StaticResource BgBase}" />
-                    </Style>
-                    <Style Selector="Border.comboBadge.active">
-                        <Setter Property="Background" Value="{StaticResource ComboStroke}" />
-                    </Style>
-                    <Style Selector="Border.comboBadge.active TextBlock">
-                        <Setter Property="Foreground" Value="{StaticResource Text}" />
                     </Style>
                 </ItemsControl.Styles>
             </ItemsControl>
 
             <ItemsControl ItemsSource="{Binding RightKeys}"
-                          Width="{Binding BoardSurfaceWidth}"
-                          Height="{Binding BoardSurfaceHeight}"
-                          Canvas.Left="{Binding RightHandX}"
-                          Canvas.Top="{Binding RightHandY}"
+                          Width="{Binding BoardLayout.BoardSurfaceWidth}"
+                          Height="{Binding BoardLayout.BoardSurfaceHeight}"
+                          Canvas.Left="{Binding BoardLayout.RightHandX}"
+                          Canvas.Top="{Binding BoardLayout.RightHandY}"
                           ClipToBounds="False"
                           ItemTemplate="{StaticResource KeyTemplate}">
                 <ItemsControl.ItemsPanel>
@@ -251,40 +260,6 @@
                     <Style Selector="ContentPresenter">
                         <Setter Property="Canvas.Left" Value="{Binding Position.X}" />
                         <Setter Property="Canvas.Top" Value="{Binding Position.Y}" />
-                    </Style>
-                    <Style Selector="Ellipse.pressDot">
-                        <Setter Property="Opacity" Value="0" />
-                        <Setter Property="Transitions">
-                            <Transitions>
-                                <DoubleTransition Property="Opacity" Duration="0:0:0.08" />
-                            </Transitions>
-                        </Setter>
-                    </Style>
-                    <Style Selector="Ellipse.pressDot.active">
-                        <Setter Property="Opacity" Value="1" />
-                    </Style>
-                    <!-- Background / BorderBrush / Foreground live on Style
-                         setters (not inline) because local attribute values
-                         beat Style setters in Avalonia — leaving them inline
-                         would shadow the .active swap and break the legend →
-                         pill highlight direction. -->
-                    <Style Selector="Border.comboBadge">
-                        <Setter Property="Background" Value="{StaticResource ComboFill}" />
-                        <Setter Property="BorderBrush" Value="{StaticResource ComboStroke}" />
-                        <Setter Property="Transitions">
-                            <Transitions>
-                                <BrushTransition Property="Background" Duration="0:0:0.12" />
-                            </Transitions>
-                        </Setter>
-                    </Style>
-                    <Style Selector="Border.comboBadge TextBlock">
-                        <Setter Property="Foreground" Value="{StaticResource BgBase}" />
-                    </Style>
-                    <Style Selector="Border.comboBadge.active">
-                        <Setter Property="Background" Value="{StaticResource ComboStroke}" />
-                    </Style>
-                    <Style Selector="Border.comboBadge.active TextBlock">
-                        <Setter Property="Foreground" Value="{StaticResource Text}" />
                     </Style>
                 </ItemsControl.Styles>
             </ItemsControl>
