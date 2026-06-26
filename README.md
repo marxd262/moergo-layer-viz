@@ -6,6 +6,8 @@ The app reads layout JSON exported from Moergo's online layout editor and render
 
 No firmware flashing, no keymap editing. The app watches the keyboard via Raw HID — the ZMK firmware reports layer state directly — and optionally pushes layer changes back for the app-focus and mouse-layer features. JSON exports from Moergo's editor drive the visual layout. That's it.
 
+If you have other ZMK keyboards or want more interop features between host/keyboard/mouse both from ZMK or QMK devices check out LViz, one of my other repo's.
+
 ![MoergoLayerViz overlay following the active layer of a Glove80 keyboard](docs/screenshots/v2/1.png)
 
 > **Upgrading from v1.x?** v2.0 is HID-only. If your GO60 or Glove80 is running stock firmware (no custom Raw HID build), this release can't track layer state — use the last signal-macro release [v1.2.4](../../releases/tag/v1.2.4) instead, or follow [Firmware support](#firmware-support) to add Raw HID to your board. The [v1.2.4 source tree](../../tree/v1.2.4) still contains the old signal-macro generator, scanner, and `docs/parsing.md` reference for anyone maintaining the v1.x path.
