@@ -1,5 +1,15 @@
 # MoergoLayerViz
 
+## About this fork
+
+This is a fork of [ovandongen/moergo-layer-viz](https://github.com/ovandongen/moergo-layer-viz). Everything in this README describes the upstream app except for one addition:
+
+- **Hide layer tabs** — a new setting (Settings → Layers tab → "Hide layer tabs") that hides the row of clickable layer chips above the board. With it on, that space shows a small non-interactive indicator instead — a color swatch and name for whichever layer is currently active — so you can still tell at a glance which layer you're on without the full browsable strip taking up space.
+
+Everything else (install instructions, firmware requirements, build steps, credits) is unchanged from upstream and documented below.
+
+---
+
 Desktop overlay that mirrors the active ZMK layer of a [Moergo](https://www.moergo.com/) GO60 or Glove80 keyboard, in real time, on Windows, macOS, and Linux..
 
 The app reads layout JSON exported from Moergo's online layout editor and renders the keyboard as a small overlay window. When you switch layers on the keyboard, the overlay follows — labels update, the active layer chip lights up, individual keypresses pulse on the board.
