@@ -163,6 +163,14 @@
                     <TextBlock Text="{Binding [Settings_LayersHint], Source={StaticResource Loc}}"
                                Foreground="{StaticResource TextMuted}" FontSize="11" TextWrapping="Wrap" />
 
+                    <StackPanel Spacing="6">
+                        <CheckBox Content="{Binding [Settings_HideLayerTabs], Source={StaticResource Loc}}"
+                                  IsChecked="{Binding MainViewModel.HideLayerTabs, Mode=TwoWay}" />
+                        <TextBlock Text="{Binding [Settings_HideLayerTabsHint], Source={StaticResource Loc}}"
+                                   Foreground="{StaticResource TextMuted}" FontSize="11" TextWrapping="Wrap" />
+                    </StackPanel>
+                    <Border Height="1" Background="{StaticResource BgSurface0}" />
+
                     <ItemsControl ItemsSource="{Binding LayerEntries}"
                                   IsVisible="{Binding HasLayoutForLayers}">
                         <ItemsControl.ItemTemplate>

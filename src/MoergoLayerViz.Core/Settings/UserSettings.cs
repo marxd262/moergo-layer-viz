@@ -48,6 +48,13 @@ public record UserSettings
     public bool ColorTrayIconByActiveLayer { get; init; } = true;
 
     /// <summary>
+    /// When true, the layer-tabs strip (the row of clickable layer chips
+    /// above the board) is hidden. The board still renders whichever layer
+    /// is active — only the browsable strip is hidden. Persisted across launches.
+    /// </summary>
+    public bool HideLayerTabs { get; init; } = false;
+
+    /// <summary>
     /// Show/hide global hotkey, neutral key name ("F12", "F18"). Registered
     /// via the platform's native hotkey API (Carbon on macOS, User32 on
     /// Windows). Inert on Linux.

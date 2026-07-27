@@ -155,6 +155,8 @@
   <data name="Settings_AutoSwitch_SectionRules"><value>Regels</value></data>
   <data name="Settings_LayersFormat"><value>Lagen — {0}</value></data>
   <data name="Settings_LayersHint"><value>Pas per laag de weergavekleur aan.</value></data>
+  <data name="Settings_HideLayerTabs"><value>Laagtabbladen verbergen</value></data>
+  <data name="Settings_HideLayerTabsHint"><value>Verbergt de rij laagtabbladen boven het toetsenbord. Het toetsenbord toont nog steeds de actieve laag.</value></data>
   <data name="Settings_LayerColorsReset"><value>Terugzetten</value></data>
   <data name="Settings_Layout"><value>Indeling</value></data>
   <data name="Settings_TopHand"><value>Bovenste helft</value></data>

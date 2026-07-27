@@ -273,30 +273,44 @@
             <Border x:Name="LayerTabs" Grid.Row="1"
                     Background="{Binding TabBackground, Converter={StaticResource HexToBrush}}"
                     Padding="8,2">
-                <ItemsControl ItemsSource="{Binding Layers}">
-                    <ItemsControl.ItemsPanel>
-                        <ItemsPanelTemplate>
-                            <WrapPanel Orientation="Horizontal" />
-                        </ItemsPanelTemplate>
-                    </ItemsControl.ItemsPanel>
-                    <ItemsControl.ItemTemplate>
-                        <DataTemplate x:DataType="vm:LayerViewModel">
-                            <Button Command="{Binding SelectCommand}"
-                                    MinWidth="48"
-                                    Classes="toggle layerTab"
-                                    Classes.active="{Binding IsSelected}"
-                                    HorizontalContentAlignment="Center"
-                                    Padding="8,4">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <Border Width="10" Height="10" CornerRadius="5"
-                                            Background="{Binding TabColor, Converter={StaticResource HexToBrush}}" />
-                                    <TextBlock Text="{Binding DisplayName}"
-                                               VerticalAlignment="Center" />
-                                </StackPanel>
-                            </Button>
-                        </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                </ItemsControl>
+                <Grid>
+                    <ItemsControl IsVisible="{Binding !HideLayerTabs}" ItemsSource="{Binding Layers}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel Orientation="Horizontal" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:LayerViewModel">
+                                <Button Command="{Binding SelectCommand}"
+                                        MinWidth="48"
+                                        Classes="toggle layerTab"
+                                        Classes.active="{Binding IsSelected}"
+                                        HorizontalContentAlignment="Center"
+                                        Padding="8,4">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <Border Width="10" Height="10" CornerRadius="5"
+                                                Background="{Binding TabColor, Converter={StaticResource HexToBrush}}" />
+                                        <TextBlock Text="{Binding DisplayName}"
+                                                   VerticalAlignment="Center" />
+                                    </StackPanel>
+                                </Button>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <!-- Non-interactive stand-in for the tabs strip when HideLayerTabs is
+                         on: just enough to see which layer is active at a glance. -->
+                    <StackPanel IsVisible="{Binding HideLayerTabs}"
+                                Orientation="Horizontal" Spacing="6"
+                                MinWidth="48" Margin="8,4">
+                        <Border Width="10" Height="10" CornerRadius="5"
+                                Background="{Binding CurrentLayerTab.TabColor, Converter={StaticResource HexToBrush}}" />
+                        <TextBlock Text="{Binding CurrentLayerTab.DisplayName}"
+                                   VerticalAlignment="Center"
+                                   Foreground="{StaticResource Text}" />
+                    </StackPanel>
+                </Grid>
             </Border>
 
             <!-- Combo legend: numbered tiles for every combo defined by the loaded

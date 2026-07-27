@@ -162,6 +162,8 @@
   <data name="Settings_AutoSwitch_SectionRules"><value>Rules</value></data>
   <data name="Settings_LayersFormat"><value>Layers — {0}</value></data>
   <data name="Settings_LayersHint"><value>Customize each layer's display color.</value></data>
+  <data name="Settings_HideLayerTabs"><value>Hide layer tabs</value></data>
+  <data name="Settings_HideLayerTabsHint"><value>Hides the row of layer chips above the board. The board still shows whichever layer is active.</value></data>
   <data name="Settings_LayerColorsReset"><value>Reset</value></data>
   <data name="Settings_Layout"><value>Layout</value></data>
   <data name="Settings_TopHand"><value>Top hand</value></data>

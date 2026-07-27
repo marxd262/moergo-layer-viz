@@ -103,6 +103,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     [ObservableProperty] private bool _isLiveHighlightingEnabled;
     [ObservableProperty] private bool _isAutoLayerSwitchEnabled;
     [ObservableProperty] private bool _hasLayoutLoaded;
+    [ObservableProperty] private bool _hideLayerTabs;
 
     /// <summary>
     /// When true the board renders numbered badges on combo keys and the legend
@@ -125,10 +126,22 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(ActiveLayerTintColor))]
+    [NotifyPropertyChangedFor(nameof(CurrentLayerTab))]
     private int _activeLayerIndex;
 
     /// <summary>Palette color for the active layer — used as the press-highlight pulse fill.</summary>
     public string ActiveLayerTintColor => LayerColorPalette.GetColor(_profile.Id, ActiveLayerIndex);
+
+    /// <summary>
+    /// The <see cref="LayerViewModel"/> for the currently active layer. Backs
+    /// the single-chip indicator shown in place of the tabs strip when
+    /// <see cref="HideLayerTabs"/> is enabled. Looked up by <see cref="LayerViewModel.Index"/>
+    /// (not <see cref="LayerViewModel.IsSelected"/> — that flag updates later
+    /// in <see cref="ApplyActiveLayer"/> than <see cref="ActiveLayerIndex"/> does,
+    /// so keying off it here could observe a stale selection). Null before a
+    /// layout is loaded.
+    /// </summary>
+    public LayerViewModel? CurrentLayerTab => Layers.FirstOrDefault(l => l.Index == ActiveLayerIndex);
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(BoardBackground))]
@@ -158,6 +171,9 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
 
     partial void OnColorTrayIconByActiveLayerChanged(bool value) =>
         _settingsService.Update(s => s with { ColorTrayIconByActiveLayer = value }, "MainVM");
+
+    partial void OnHideLayerTabsChanged(bool value) =>
+        _settingsService.Update(s => s with { HideLayerTabs = value }, "MainVM");
 
     /// <summary>
     /// Global show/hide hotkey key name (e.g. "F12"). Modifier handling
@@ -357,6 +373,7 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
         if (!string.IsNullOrWhiteSpace(s.HotkeyKey))
             _hotkeyKey = s.HotkeyKey;
         _isComboOverlayVisible = s.IsComboOverlayVisible;
+        _hideLayerTabs = s.HideLayerTabs;
         _isWindowsModifierStyle = string.Equals(s.ModifierStyle, "Windows", StringComparison.OrdinalIgnoreCase);
 
         // Board geometry + press colors live in dedicated child VMs shared with
@@ -680,7 +697,11 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
     private void RebuildLayers()
     {
         Layers.Clear();
-        if (_config is null) return;
+        if (_config is null)
+        {
+            OnPropertyChanged(nameof(CurrentLayerTab));
+            return;
+        }
         foreach (var layer in _config.Layers)
         {
             Layers.Add(new LayerViewModel(
@@ -689,6 +710,12 @@ public partial class MainWindowViewModel : ObservableObject, IBoardSurface
                 LayerColorPalette.GetColor(_profile.Id, layer.Index),
                 SelectLayer));
         }
+        // Rebuild replaces every LayerViewModel instance. ApplyActiveLayer's
+        // NotifyPropertyChangedFor(ActiveLayerIndex) only re-raises this when
+        // the index value itself changes (e.g. reloading while on layer 0
+        // wouldn't), so raise explicitly here to cover the "same index, new
+        // instances" case too.
+        OnPropertyChanged(nameof(CurrentLayerTab));
     }
 
     private void SelectLayer(int index)
