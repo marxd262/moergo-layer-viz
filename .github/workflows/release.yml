@@ -62,7 +62,7 @@ jobs:
         run: |
           mkdir -p ./vpk-output
           vpk download github \
-            --repoUrl https://github.com/ovandongen/moergo-layer-viz \
+            --repoUrl https://github.com/marxd262/moergo-layer-viz \
             --channel win-x64 \
             --outputDir ./vpk-output \
             --token "$GITHUB_TOKEN"
@@ -77,7 +77,7 @@ jobs:
             --packDir "$publish" \
             --mainExe MoergoLayerViz.App.exe \
             --packTitle "MoergoLayerViz" \
-            --packAuthors "ovandongen" \
+            --packAuthors "marxd262" \
             --channel win-x64 \
             --outputDir ./vpk-output
           ls -lh ./vpk-output
@@ -152,7 +152,7 @@ jobs:
         run: |
           mkdir -p ./vpk-output
           vpk download github \
-            --repoUrl https://github.com/ovandongen/moergo-layer-viz \
+            --repoUrl https://github.com/marxd262/moergo-layer-viz \
             --channel osx-${{ steps.ver.outputs.arch }} \
             --outputDir ./vpk-output \
             --token "$GITHUB_TOKEN"
@@ -166,7 +166,7 @@ jobs:
             --packDir "$app" \
             --mainExe MoergoLayerViz \
             --packTitle "MoergoLayerViz" \
-            --packAuthors "ovandongen" \
+            --packAuthors "marxd262" \
             --channel osx-${{ steps.ver.outputs.arch }} \
             --outputDir ./vpk-output
           ls -lh ./vpk-output
@@ -225,7 +225,7 @@ jobs:
         run: |
           mkdir -p ./vpk-output
           vpk download github \
-            --repoUrl https://github.com/ovandongen/moergo-layer-viz \
+            --repoUrl https://github.com/marxd262/moergo-layer-viz \
             --channel linux-x64 \
             --outputDir ./vpk-output \
             --token "$GITHUB_TOKEN"
@@ -240,7 +240,7 @@ jobs:
             --packDir "$publish" \
             --mainExe MoergoLayerViz.App \
             --packTitle "MoergoLayerViz" \
-            --packAuthors "ovandongen" \
+            --packAuthors "marxd262" \
             --icon src/MoergoLayerViz.App/Assets/icon.png \
             --channel linux-x64 \
             --outputDir ./vpk-output
